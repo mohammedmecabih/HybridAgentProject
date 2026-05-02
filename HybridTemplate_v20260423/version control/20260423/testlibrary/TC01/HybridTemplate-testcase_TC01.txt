@@ -1,0 +1,68 @@
+2026-04-2 8:01, wolf, change in proactive state from; , to: MakeFriends
+2026-04-2 8:01, [sheep], change in state from; 0, to: [State_MoveAround]
+2026-04-2 9:14, wolf, change in proactive state from; MakeFriends, to: VisitingFriend
+2026-04-2 11:05, wolf, change in proactive state from; VisitingFriend, to: AtHome
+2026-04-2 11:06, wolf, change in proactive state from; AtHome, to: VisitingFriend
+2026-04-2 11:08, wolf, change in proactive state from; VisitingFriend, to: AtHome
+2026-04-2 11:09, wolf, change in proactive state from; AtHome, to: MakeFriends
+2026-04-2 11:43, wolf, change in proactive state from; MakeFriends, to: VisitingFriend
+2026-04-2 11:45, wolf, change in proactive state from; VisitingFriend, to: AtHome
+2026-04-2 11:46, wolf, change in proactive state from; AtHome, to: VisitingFriend
+2026-04-2 11:48, wolf, change in proactive state from; VisitingFriend, to: AtHome
+2026-04-2 11:49, wolf, change in proactive state from; AtHome, to: MakeFriends
+2026-04-2 11:56, wolf, change in proactive state from; MakeFriends, to: VisitingFriend
+2026-04-2 11:58, wolf, change in proactive state from; VisitingFriend, to: AtHome
+2026-04-2 11:59, wolf, change in proactive state from; AtHome, to: VisitingFriend
+2026-04-2 12:01, wolf, change in proactive state from; VisitingFriend, to: AtHome
+2026-04-2 12:02, wolf, change in proactive state from; AtHome, to: MakeFriends
+2026-04-2 13:06, wolf, change in proactive state from; MakeFriends, to: VisitingFriend
+2026-04-2 13:07, wolf, change in proactive state from; VisitingFriend, to: MakeFriends
+2026-04-2 13:58, wolf, change in proactive state from; MakeFriends, to: VisitingFriend
+2026-04-2 14:00, wolf, change in proactive state from; VisitingFriend, to: AtHome
+2026-04-2 14:01, wolf, change in proactive state from; AtHome, to: HuntingAgentB
+2026-04-2 14:53, [sheep], change in state from; [State_MoveAround], to: [State_identifyFollower]
+2026-04-2 14:58, [sheep], change in state from; [State_identifyFollower], to: [State_MoveAround]
+2026-04-2 15:24, [sheep], change in state from; [State_MoveAround], to: [State_identifyFollower]
+2026-04-2 15:29, [sheep], change in state from; [State_identifyFollower], to: [State_MoveAround]
+2026-04-2 16:05, [sheep], change in state from; [State_MoveAround], to: [State_identifyFollower]
+2026-04-2 16:10, [sheep], change in state from; [State_identifyFollower], to: [State_MoveAround]
+2026-04-2 16:22, [sheep], change in state from; [State_MoveAround], to: [State_identifyFollower]
+2026-04-2 16:27, [sheep], change in state from; [State_identifyFollower], to: [State_MoveAround]
+2026-04-2 16:40, [sheep], change in state from; [State_MoveAround], to: [State_identifyFollower]
+2026-04-2 16:45, [sheep], change in state from; [State_identifyFollower], to: [State_MoveAround]
+2026-04-2 17:00, [sheep], change in state from; [State_MoveAround], to: [State_identifyFollower]
+2026-04-2 17:05, [sheep], change in state from; [State_identifyFollower], to: [State_MoveAround]
+2026-04-2 17:37, [sheep], change in state from; [State_MoveAround], to: [State_identifyFollower]
+2026-04-2 17:42, [sheep], change in state from; [State_identifyFollower], to: [State_MoveAround]
+2026-04-2 18:23, [sheep], change in state from; [State_MoveAround], to: [State_identifyFollower]
+2026-04-2 18:28, [sheep], change in state from; [State_identifyFollower], to: [State_MoveAround]
+2026-04-2 19:24, [sheep], change in state from; [State_MoveAround], to: [State_identifyFollower]
+2026-04-2 19:29, [sheep], change in state from; [State_identifyFollower], to: [State_MoveAround]
+2026-04-2 19:42, [sheep], change in state from; [State_MoveAround], to: [State_identifyFollower]
+2026-04-2 19:47, [sheep], change in state from; [State_identifyFollower], to: [State_MoveAround]
+2026-04-2 20:12, [sheep], change in state from; [State_MoveAround], to: [State_identifyFollower]
+2026-04-2 20:17, [sheep], change in state from; [State_identifyFollower], to: [State_MoveAround]
+2026-04-2 20:53, [sheep], change in state from; [State_MoveAround], to: [State_identifyFollower]
+2026-04-2 20:58, [sheep], change in state from; [State_identifyFollower], to: [State_MoveAround]
+2026-04-2 21:23, [sheep], change in state from; [State_MoveAround], to: [State_identifyFollower]
+2026-04-2 21:28, [sheep], change in state from; [State_identifyFollower], to: [State_MoveAround]
+2026-04-2 21:53, [sheep], change in state from; [State_MoveAround], to: [State_identifyFollower]
+2026-04-2 21:58, [sheep], change in state from; [State_identifyFollower], to: [State_MoveAround]
+2026-04-2 22:00, wolf, change in proactive state from; HuntingAgentB, to: AtHome
+2026-04-3 6:00, wolf, change in proactive state from; AtHome, to: HuntingAgentB
+2026-04-3 6:31, [sheep], change in state from; [State_MoveAround], to: [State_identifyFollower]
+2026-04-3 6:36, [sheep], change in state from; [State_identifyFollower], to: [State_MoveAround]
+2026-04-3 7:08, [sheep], change in state from; [State_MoveAround], to: [State_identifyFollower]
+2026-04-3 7:13, [sheep], change in state from; [State_identifyFollower], to: [State_MoveAround]
+2026-04-3 7:37, [sheep], change in state from; [State_MoveAround], to: [State_identifyFollower]
+2026-04-3 7:42, [sheep], change in state from; [State_identifyFollower], to: [State_MoveAround]
+2026-04-3 8:08, [sheep], change in state from; [State_MoveAround], to: [State_identifyFollower]
+2026-04-3 8:13, [sheep], change in state from; [State_identifyFollower], to: [State_MoveAround]
+2026-04-3 11:21, [sheep], change in state from; [State_MoveAround], to: [State_identifyFollower]
+2026-04-3 11:26, [sheep], change in state from; [State_identifyFollower], to: [State_MoveAround]
+2026-04-3 11:51, [sheep], change in state from; [State_MoveAround], to: [State_identifyFollower]
+2026-04-3 11:56, [sheep], change in state from; [State_identifyFollower], to: [State_MoveAround]
+2026-04-3 12:23, [sheep], change in state from; [State_MoveAround], to: [State_identifyFollower]
+2026-04-3 12:28, [sheep], change in state from; [State_identifyFollower], to: [State_Escape]
+2026-04-3 12:38, wolf, change in proactive state from; HuntingAgentB, to: AtHome
+2026-04-3 12:38, [sheep], change in state from; [State_Escape], to: [State_Sanctuary]

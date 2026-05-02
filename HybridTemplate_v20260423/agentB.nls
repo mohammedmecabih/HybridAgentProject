@@ -1,0 +1,159 @@
+
+agentBs-own [
+  state
+  homeLoc
+  localxy
+  currentMessage
+  currentPost
+  currentPostId
+  sharedPostIds
+  ignoredPostIds
+  willShare?
+  riskTolerance
+  shareCooldown
+  
+   ;; LÄGG TILL
+
+  is-banned?
+  post-frequency
+  account-age
+]
+
+to setup-agentBs
+  create-agentBs Number_AgentB [
+    set shape "bug"
+    set size 1.4
+    set color blue
+    move-to one-of patches
+
+    set homeLoc patch-here
+    set localxy patch-here
+
+    set beliefs []
+    set intentions []
+    set incoming-queue []
+
+    set state "check"
+
+    set currentMessage nobody
+    set currentPost nobody
+    set currentPostId -1
+
+    set sharedPostIds []
+    set ignoredPostIds []
+
+    set willShare? false
+    set riskTolerance 4 + random 7
+    set shareCooldown 0
+    
+    set is-banned? false
+    set post-frequency 0
+    set account-age random 20
+  ]
+end
+
+to updateEnvironmentInfo_agentBs
+  set localxy patch-here
+
+  if shareCooldown > 0 [
+    set shareCooldown shareCooldown - 1
+  ]
+end
+
+to reactive_agentBs
+  if state = "check" [ check-messages stop ]
+  if state = "decide" [ decide-share stop ]
+  if state = "share" [ do-share stop ]
+  if state = "ignore" [ do-ignore stop ]
+end
+
+to check-messages
+  if not empty? incoming-queue [
+    set currentMessage get-message
+
+    if get-performative currentMessage = "inform" [
+      let content get-content currentMessage
+
+      if item 0 content = "new-post" [
+        set currentPostId item 1 content
+
+        let wantedPostId currentPostId
+        set currentPost one-of posts with [post-id = wantedPostId]
+
+        ifelse currentPost != nobody [
+          set state "decide"
+        ] [
+          set state "ignore"
+        ]
+      ]
+    ]
+  ]
+end
+
+to decide-share
+  if currentPost = nobody [
+    set state "ignore"
+    stop
+  ]
+
+  if [post-removed?] of currentPost [
+    set state "ignore"
+    stop
+  ]
+
+  if member? currentPostId sharedPostIds [
+    set state "ignore"
+    stop
+  ]
+
+  if shareCooldown > 0 [
+    set state "ignore"
+    stop
+  ]
+
+  let prob share-probability
+
+  if [post-extremity] of currentPost > riskTolerance [
+    set prob cautious-share-probability
+  ]
+
+  ifelse random 100 < prob [
+    set willShare? true
+    set state "share"
+  ] [
+    set willShare? false
+    set state "ignore"
+  ]
+end
+
+to do-share
+  if currentPost != nobody [
+    ask currentPost [
+      if not post-removed? [
+        set post-shares post-shares + 1
+      ]
+    ]
+
+    set sharedPostIds lput currentPostId sharedPostIds
+    set total-posts-shared total-posts-shared + 1
+    set shareCooldown 10
+  ]
+
+  reset-bot
+end
+
+to do-ignore
+  if currentPostId != -1 and not member? currentPostId ignoredPostIds [
+    set ignoredPostIds lput currentPostId ignoredPostIds
+  ]
+
+  reset-bot
+end
+
+to reset-bot
+  set currentMessage nobody
+  set currentPost nobody
+  set currentPostId -1
+  set willShare? false
+  set state "check"
+end

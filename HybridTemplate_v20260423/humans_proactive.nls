@@ -1,0 +1,319 @@
+;***************************************************************
+; LOGBOOK OF UPDATES IN THIS FILE
+; --Date--- |----Description-----------------------------------
+; 20260428  v2.1  Removed humans_shared.nls, moved humans-own variables to proactive file (Mohammed)
+; 20260428  v2.1  Implemented proactive FSM (Scrolling, EvaluatePost, DelegateAction) (Hamed)
+; 20260428  v2.1  Added intention selection logic based on flags (Hamed)
+; 20260428  v2.2  Integrated memory-based decision making using post types (Hamed)
+; 20260428  v2.2  Added currentPostType and memory lists (liked/shared/ignored/reported)(Hamed)
+;***************************************************************
+
+humans-own [
+
+  ;Beliefs
+  postDetected
+  postInteresting
+  postVeryInteresting
+  postUninteresting
+  postSuspicious
+  seenSimilarPostBefore
+  likedSimilarPostBefore
+  sharedSimilarPostBefore
+  reportedSimilarPostBefore
+  postPopular
+  sourceTrusted
+  sourceUntrusted
+  
+  seenPostIds
+
+  ;Environment
+  nearbyPosts
+  currentPost
+  emotionTone
+  viralScore
+  majorityOpinion
+  postRelevance
+  vision
+  localxy
+
+  ; Reactive flags 
+  interestingFlag
+  veryInterestingFlag
+  suspiciousFlag
+  commentFlag
+
+  likeFlag
+  shareFlag
+  ignoreFlag
+  reportFlag
+  replyFlag
+  
+  ;Hamed har lagt dessa för minne
+  likedMemory  
+  sharedMemory
+  ignoredMemory
+  reportedMemory
+  ; Hamed skriv detta 
+  currentPostType
+  likedPostTypes
+  sharedPostTypes
+  ignoredPostTypes
+  reportedPostTypes
+  
+  is-infected?
+  is-resistant?
+  is-banned?
+  
+  
+  ;Shared 
+  selectedAction
+
+  ;Proactive 
+  currentGoal
+  currentIntention
+  proState
+  planQueue
+]
+
+
+to setup-humans
+  create-humans Number_AgentA [
+    set shape "person"
+    set color white
+    set size 1
+    setxy random-xcor random-ycor
+
+    set vision 15
+
+    ;beliefs
+    set postDetected false
+    set postInteresting false
+    set postVeryInteresting false
+    set postUninteresting false
+    set postSuspicious false
+    set seenSimilarPostBefore false
+    set likedSimilarPostBefore false
+    set sharedSimilarPostBefore false
+    set reportedSimilarPostBefore false
+    set postPopular false
+    set sourceTrusted false
+    set sourceUntrusted false
+
+    ; reactive flags
+    set interestingFlag false
+    set veryInterestingFlag false
+    set suspiciousFlag false
+    set commentFlag false
+
+    set likeFlag false
+    set shareFlag false
+    set ignoreFlag false
+    set reportFlag false
+    set replyFlag false
+
+    ; shared
+    set selectedAction "none"
+
+    ;proactive
+    set currentGoal "None"
+    set currentIntention "None"
+    set proState "Scrolling"
+    set planQueue []
+
+    ; environment
+    set currentPost nobody
+    set emotionTone 0
+    set viralScore 0
+    set majorityOpinion 0
+    set postRelevance 0
+    
+    ;Hamed skriv detta
+    set likedMemory 0
+    set sharedMemory 0
+    set ignoredMemory 0
+    set reportedMemory 0
+    ;Hamed skriv detta 
+    set currentPostType "politics"
+    set likedPostTypes []
+    set sharedPostTypes []
+    set ignoredPostTypes []
+    set reportedPostTypes []
+    
+    set is-infected? false
+    set is-resistant? false
+    set is-banned? false
+    
+    set seenPostIds []
+  ]
+end
+
+
+to updateEnvironmentInfo_humans
+  set localxy patch-here
+  
+  
+  ;set currentPostType one-of ["politics" "sport" "news" "conspiracy"]
+  ; reset reactive flags
+  set postDetected false
+  set interestingFlag false
+  set veryInterestingFlag false
+  set suspiciousFlag false
+  set commentFlag false
+  set currentPost nobody
+  ; TEMPORARY RANDOM LOGIC
+  
+  let unseenPosts posts in-radius vision with [not member? post-id [seenPostIds] of myself]
+  if any? unseenPosts [
+    set currentPost one-of unseenPosts
+    set seenPostIds lput [post-id] of currentPost seenPostIds
+    set postDetected true
+    set currentPostType [post-topic] of currentPost
+  if [post-extremity] of currentPost >= 8 [
+
+  if random 100 < 80 [ set suspiciousFlag true ]
+
+]
+
+if ([post-extremity] of currentPost >= 5 and [post-extremity] of currentPost < 8) [
+
+  if random 100 < 70 [ set veryInterestingFlag true ]
+
+]
+
+if [post-extremity] of currentPost < 5 [
+
+  if random 100 < 70 [ set interestingFlag true ]
+
+]
+    if random 100 < 10 [
+      set commentFlag true
+    ]
+  ]
+      
+end
+
+
+to proactive_humans
+  run proState
+end
+
+
+to Scrolling
+  if postDetected [
+    set proState "EvaluatePost"
+  ]
+end
+
+
+to EvaluatePost
+  if not postDetected or currentPost = nobody [
+    set currentIntention "None"
+    set selectedAction "none"
+    set proState "Scrolling"
+    stop
+  ]
+
+  ;; först: reagera på själva inlägget
+  if suspiciousFlag [
+    set currentIntention "ReportPost"
+    set proState "DelegateAction"
+    stop
+  ]
+
+  if veryInterestingFlag [
+    set currentIntention "SharePost"
+    set proState "DelegateAction"
+    stop
+  ]
+
+  if interestingFlag [
+    set currentIntention "LikePost"
+    set proState "DelegateAction"
+    stop
+  ]
+
+  if commentFlag [
+    set currentIntention "ReplyComment"
+    set proState "DelegateAction"
+    stop
+  ]
+
+  ;; sedan: använd minne bara om inget annat styrde
+  if member? currentPostType reportedPostTypes [
+    set currentIntention "ReportPost"
+    set proState "DelegateAction"
+    stop
+  ]
+
+  if member? currentPostType sharedPostTypes [
+    set currentIntention "SharePost"
+    set proState "DelegateAction"
+    stop
+  ]
+
+  if member? currentPostType likedPostTypes [
+    set currentIntention "LikePost"
+    set proState "DelegateAction"
+    stop
+  ]
+
+  if member? currentPostType ignoredPostTypes [
+    set currentIntention "IgnorePost"
+    set proState "DelegateAction"
+    stop
+  ]
+
+  set currentIntention "IgnorePost"
+  set proState "DelegateAction"
+end
+
+
+to DelegateAction
+
+  if currentIntention = "SharePost" [
+    set selectedAction "share"
+  ]
+
+  if currentIntention = "LikePost" [
+    set selectedAction "like"
+  ]
+
+  if currentIntention = "IgnorePost" [
+    set selectedAction "ignore"
+  ]
+
+  if currentIntention = "ReportPost" [
+    set selectedAction "report"
+  ]
+
+  if currentIntention = "ReplyComment" [
+    set selectedAction "reply"
+  ]
+
+  set proState "Scrolling"
+end
+
+
+
+;Hamed skriv detta 
+to update-memory
+  if selectedAction = "like" [
+    set likedMemory likedMemory + 1
+    set likedPostTypes lput currentPostType likedPostTypes
+  ]
+
+  if selectedAction = "share" [
+    set sharedMemory sharedMemory + 1
+    set sharedPostTypes lput currentPostType sharedPostTypes
+  ]
+
+  if selectedAction = "ignore" [
+    set ignoredMemory ignoredMemory + 1
+    set ignoredPostTypes lput currentPostType ignoredPostTypes
+  ]
+
+  if selectedAction = "report" [
+    set reportedMemory reportedMemory + 1
+    set reportedPostTypes lput currentPostType reportedPostTypes
+  ]
+end

@@ -1,0 +1,108 @@
+
+; LOGBOOK OF UPDATES IN THIS FILE
+; --Date--- |----Description-----------------------------------
+; 20260428  v2.1  Adjusted reactive behaviors to use variables defined in proactive file (Mohammed)
+; 20260428  v2.1  Implemented reactive actions (like, share, ignore, report, reply) (Hamed)
+; 20260428  v2.1  Connected reactive actions to selectedAction variable (Hamed)
+; 20260428  v2.2  Ensured only one action executed per step (subsumption logic) (Hamed)
+;***************************************************************
+
+
+to reactive_humans
+
+  set likeFlag false
+  set shareFlag false
+  set ignoreFlag false
+  set reportFlag false
+  set replyFlag false
+
+  ; proactive override
+  if selectedAction = "share" [
+    share-post
+    set selectedAction "none"
+    stop
+  ]
+
+  if selectedAction = "like" [
+    like-post
+    set selectedAction "none"
+    stop
+  ]
+
+  if selectedAction = "ignore" [
+    ignore-post
+    set selectedAction "none"
+    stop
+  ]
+
+  if selectedAction = "report" [
+    report-post
+    set selectedAction "none"
+    stop
+  ]
+
+  if selectedAction = "reply" [
+    reply-to-comment
+    set selectedAction "none"
+    stop
+  ]
+
+  ; fallback reactive logic
+  if suspiciousFlag [
+    report-post
+    stop
+  ]
+  if veryInterestingFlag [
+    share-post
+    stop
+  ]
+  if interestingFlag [
+    like-post
+    stop
+  ]
+  if commentFlag [
+    reply-to-comment
+    stop
+  ]
+
+  if postDetected and currentPost != nobody [
+  ignore-post
+]
+end
+
+
+to like-post 
+  set color blue
+  if currentPost != nobody [
+    ask currentPost [
+      set post-likes post-likes + 1
+    ]
+  ]
+  
+end
+
+to share-post
+  set color green
+  set totalShares totalShares + 1
+  set viralTrend viralTrend + 1
+  if currentPost != nobody [
+    ask currentPost [
+      set post-shares post-shares + 1
+    ]
+  ]
+  
+end
+
+to ignore-post 
+  set color gray
+end
+
+to report-post
+  set color red
+  set numberOfReports numberOfReports + 1
+  set viralTrend viralTrend - 1
+end
+
+to reply-to-comment
+  set color yellow
+end
