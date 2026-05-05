@@ -13,14 +13,15 @@
 ; 20250423    Initial template to be adapted to the group's project template                                   Gion
 ;
 ;
-;
-;********************end logbook ************************************************************************************************************************
-;*********************************************************************************************************************************************************
-; LOGBOOK OF UPDATES IN THIS FILE
 ; --Date--- |-----Description--------------------------------------------------------------|---Person(s)------
 ; 20260428  v2.0  Integrated proactive and reactive human agent into hybrid architecture (Mohammed och Hamed)
 ; 20260428  v2.1  Added test case execution using activateTestCase switch (Mohammed och Hamed)
 ; 20260428  v2.2  Connected memory update to main loop (update-memory in go)(Mohammed och Hamed)
+;; 20260505  v2.3  Updated go-loop to use 'ask turtles' instead of separate breed calls.
+;                 This ensures all agents (humans, agentAs, agentBs, agencies) execute in random order each tick,
+;                 as recommended by the teacher for more realistic ABM behaviour. (Mohammed & Hamed)
+;********************end logbook ************************************************************************************************************************
+;*********************************************************************************************************************************************************
 
 ; INCLUDED FILES
 __includes [
@@ -131,52 +132,80 @@ end
 to go
   tick
 
-  ;; kör humans
-  ask humans [
-    updateEnvironmentInfo_humans
-    proactive_humans
-     
-    update-memory
-    reactive_humans 
-    ;set selectionAction "none"
-   
-  ]
-  ;; kör main bots (agentA)
-
-  ask agentAs [
-  updateEnvironmentInfo_agentAs
-  reactive_agentAs
-  proactive_agentAs
-]
-;; kör reactive bots (agentB)
-
-ask agentBs [
-  updateEnvironmentInfo_agentBs
-   reactive_agentBs
-]
+  ;; --------------------------------------------------------------------
+  ;;  LÄRARENS KRAV:
+  ;;  Kör ALLA agenter i SAMMA ask-block.
+  ;;  NetLogo kör turtles i SLUMPMÄSSIG ORDNING varje tick.
+  ;;  Detta gör modellen mer realistisk och agent-baserad.
   
-  ask agencies [ updateEnvironmentInfo_agencies ]
-  ask agencies [ reactive_agencies ]
-  ask agencies [ proactive_agencies ]
+  ask turtles [
 
-  ;; kör testfall om aktiverat
+    ;;  HUMANS (hybrid agents) 
+    if breed = humans [
+      ;; Läs omvärlden och sätt reaktiva flaggor
+      updateEnvironmentInfo_humans
+
+      ;; Proaktivt lager (FSM)
+      proactive_humans
+
+      ;; Uppdatera minne baserat på intention
+      update-memory
+
+      ;; Reaktivt lager (utför handling)
+      reactive_humans
+    ]
+
+    ;;  agentA (hybrid bots) 
+    if breed = agentAs [
+      ;; Läs omvärlden
+      updateEnvironmentInfo_agentAs
+
+      ;; Reaktivt lager först (subsumption)
+      reactive_agentAs
+
+      ;; Proaktivt lager (planering)
+      proactive_agentAs
+    ]
+
+    ;;  agentB (reaktiva bots) 
+    if breed = agentBs [
+      ;; Läs omvärlden
+      updateEnvironmentInfo_agentBs
+
+      ;; Endast reaktivt beteende
+      reactive_agentBs
+    ]
+
+    ;;  AGENCY (meta-agent) 
+    if breed = agencies [
+      ;; Läs globala signaler (viralTrend, reports, thresholds)
+      updateEnvironmentInfo_agencies
+
+      ;; Reaktivt lager (krishantering)
+      reactive_agencies
+
+      ;; Proaktivt lager 
+      proactive_agencies
+    ]
+  ]
+
+  ;; ---------------- TESTFALL ----------------
   if activateTestCase [
     run "run-humans-test"
   ]
 
-  ;; terminal condition: stop if no humans left
+  ;; ---------------- TERMINATION ----------------
   if not any? humans [
     set TERMINATE true
   ]
 
- 
-
-  ;; video recorder
+  ;; ---------------- VIDEO RECORDER ----------------
   if vid:recorder-status = "recording" [
     if Source = "Only View" [ vid:record-view ]
     if Source = "With Interface" [ vid:record-interface ]
   ]
 end
+
 
 ;***************************end to go part ******************************************************************************************************************
 ;************************************************************************************************************************************************************]]></code>
