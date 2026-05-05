@@ -35,31 +35,27 @@ agencies-own [
 ; ── Setup ───────────────────────────────────────────────────────
 to setup-agencies
   create-agencies 1 [
-    set shape "square"
-    set color white
-    set size 3
-    setxy 0 0
-
-    ; Template var
+    set shape "house"     ;; Changes the icon to the house shape from your XML
+    set color white       ;; Keeps it white for high visibility
+    set size 6            ;; Makes the building significantly larger than humans
+    setxy 0 0             ;; Places the "Headquarters" in the center
+    set heading 0         ;; Ensures the house isn't tilted
+    
+    ; Initialize BDI and FSM variables
     set beliefs        []
     set intentions     []
     set incoming-queue []
-
-    ; Agency FSM
     set proState_agency      "Monitoring"
     set investigation-target  nobody
     set investigation-ticks   0
     set bans-issued           0
     set corrections-published 0
-
-    ; Delegation channel
-    set delegated-action "none"
-    set delegated-target nobody
     set has-delegation?  false
-
     set reactive-acted? false
     
-  
+    ; Optional: Add a label so everyone knows what the building is
+    set label "AGENCY HQ"
+    set label-color yellow
   ]
 end
 
