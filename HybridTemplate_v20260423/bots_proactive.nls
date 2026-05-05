@@ -21,7 +21,7 @@ to setup-agentAs
   create-agentAs 1 [
     set label "MAIN"
     set shape "bug"
-    set size 2.2
+    set size 2.5
     set color red
     move-to one-of patches
 
@@ -309,6 +309,7 @@ to update-post-status
        not post-viral? [
       set post-viral? true
       set total-viral-posts total-viral-posts + 1
+      set viralTrend viralTrend + 1
       set color yellow
     ]
   ]
