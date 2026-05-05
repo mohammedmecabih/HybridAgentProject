@@ -6,7 +6,7 @@
 ; 20260428  v2.1  Added intention selection logic based on flags (Hamed)
 ; 20260428  v2.2  Integrated memory-based decision making using post types (Hamed)
 ; 20260428  v2.2  Added currentPostType and memory lists (liked/shared/ignored/reported)(Hamed)
-;jag ar öndraftdsafasga
+;tar bort den sen
 ;***************************************************************
 
 humans-own [
