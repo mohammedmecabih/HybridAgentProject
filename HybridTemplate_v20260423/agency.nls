@@ -61,8 +61,35 @@ end
 
 ; ── Called every tick from go ────────────────────────────────────
 to updateEnvironmentInfo_agencies
-  ; Agency reads shared globals written by humans + bots
-  ; (numberOfReports, viralTrend, totalShares are already updated by humans)
+  ;; 1. Hitta alla röda inlägg som skapats av botarna
+  let red-posts posts with [color = red and not post-removed?]
+  
+  ;; 2. Om det finns röda inlägg, välj det närmaste
+  if any? red-posts [
+    let target min-one-of red-posts [distance myself]
+    
+    ;; 3. Gå mot målet
+    face target
+    fd 0.4 ;; Hastighet på huset
+    
+    ;; 4. Om vi är framme (avstånd < 1.5 pga stora ikoner)
+    if distance target < 1.5 [
+      ;; Utför en handling: Ta bort inlägget (ban/remove)
+      ask target [
+        set post-removed? true
+        set color black ;; Gör det osynligt/stängt
+        set label "REMOVED"
+      ]
+      
+      ;; Uppdatera statistik för din Agency
+      set bans-issued bans-issued + 1
+      output-print (word "AGENCY: Tog bort rött inlägg ID: " [post-id] of target)
+      
+      ;; Gå tillbaka till Monitoring-läge i FSM:en
+      set proState_agency "Monitoring"
+    ]
+  ]
+  
   set reactive-acted? false
 end
 

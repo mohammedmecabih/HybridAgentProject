@@ -66,32 +66,37 @@ to setup-agentAs
   ]
 end
 
-to updateEnvironmentInfo_agentAs
-  set localxy patch-here
-  set actionExecuted? false
-
-  set latestPost nobody
-  set observedViralPost nobody
-  set observedRemovedPost nobody
-  set hasViralPost? false
-  set hasRemovedPost? false
-
-  if any? posts [
-    set latestPost max-one-of posts [post-id]
-    set latestPostId [post-id] of latestPost
-  ]
-
-  if activePost != nobody [
-    if [post-viral?] of activePost and not [post-removed?] of activePost [
-      set observedViralPost activePost
-      set hasViralPost? true
+to updateEnvironmentInfo_agencies
+  ;; 1. Hitta alla röda inlägg som skapats av botarna
+  let red-posts posts with [color = red and not post-removed?]
+  
+  ;; 2. Om det finns röda inlägg, välj det närmaste
+  if any? red-posts [
+    let target min-one-of red-posts [distance myself]
+    
+    ;; 3. Gå mot målet
+    face target
+    fd 0.4 ;; Hastighet på huset
+    
+    ;; 4. Om vi är framme (avstånd < 1.5 pga stora ikoner)
+    if distance target < 1.5 [
+      ;; Utför en handling: Ta bort inlägget (ban/remove)
+      ask target [
+        set post-removed? true
+        set color black ;; Gör det osynligt/stängt
+        set label "REMOVED"
+      ]
+      
+      ;; Uppdatera statistik för din Agency
+      set bans-issued bans-issued + 1
+      output-print (word "AGENCY: Tog bort rött inlägg ID: " [post-id] of target)
+      
+      ;; Gå tillbaka till Monitoring-läge i FSM:en
+      set proState_agency "Monitoring"
     ]
-
-    if [post-removed?] of activePost [
-      set observedRemovedPost activePost
-      set hasRemovedPost? true
-    ]
   ]
+  
+  set reactive-acted? false
 end
 
 to reactive_agentAs
