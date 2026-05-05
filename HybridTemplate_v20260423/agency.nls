@@ -40,7 +40,7 @@ to setup-agencies
     set size 3
     setxy 0 0
 
-    ; Template vars (required by bdi.nls etc.)
+    ; Template var
     set beliefs        []
     set intentions     []
     set incoming-queue []
@@ -59,9 +59,7 @@ to setup-agencies
 
     set reactive-acted? false
     
-    
-    
-    
+  
   ]
 end
 
@@ -84,7 +82,7 @@ to reactive_agencies
     stop
   ]
 
-  ; Priority 1 — viral crisis: trend spiking AND many reports → intervene fast
+  ; Priority 1 — Ban bots 
   if viralTrend > viral-crisis-threshold and numberOfReports > report-crisis-threshold [
     let worst-bot max-one-of (agentBs with [is-banned? = false]) [post-frequency]
     if worst-bot != nobody [
@@ -96,7 +94,7 @@ to reactive_agencies
     ]
   ]
 
-  ; Priority 2 — report threshold crossed → flag & correct a human post
+  ; Priority 2 — flag human posts if report threshold 
   if numberOfReports > report-flag-threshold [
     let target one-of (humans with [
       is-infected? = true and is-resistant? = false and is-banned? = false
@@ -114,7 +112,7 @@ to reactive_agencies
     ]
   ]
 
-  ; Priority 3 — passive scan (lowest, always fires if nothing above triggered)
+  ; Priority 3 — passive scan (lowest looking at keywords. 
   output-print (word
     "REACTIVE P3: monitoring — reports=" numberOfReports
     " viralTrend=" viralTrend
@@ -123,7 +121,7 @@ to reactive_agencies
 end
 
 ; ══════════════════════════════════════════════════════════════════
-;  PROACTIVE LAYER  (FSM: Monitoring → Investigating → Deciding → Reporting)
+;  PROACTIVE LAYER  Monitoring , Investigating , Deciding ,  Reporting)
 ; ══════════════════════════════════════════════════════════════════
 to proactive_agencies
   if proState_agency = "Monitoring"     [ agency-monitoring     stop ]
@@ -181,7 +179,7 @@ to agency-investigating
   ]
 end
 
-; ── Deciding: choose what action to delegate ────────────────────
+; ── Deciding: ────────────────────
 to agency-deciding
   output-print "PROACTIVE [Deciding]"
 
@@ -193,7 +191,7 @@ to agency-deciding
     set proState_agency "Monitoring" stop
   ]
 
-  ; Bot confirmed → full ban
+  ; Bot confirmed then full ban
   if [breed] of investigation-target = agentBs and
      [post-frequency] of investigation-target > bot-frequency-threshold and
      [account-age] of investigation-target < 8 [
@@ -205,7 +203,7 @@ to agency-deciding
     stop
   ]
 
-  ; Infected human → correction
+  ; propaganda human then correction
   if [breed] of investigation-target = humans and
      [is-infected?] of investigation-target and
      not ([is-resistant?] of investigation-target) [
@@ -233,7 +231,7 @@ to agency-reporting
 end
 
 ; ══════════════════════════════════════════════════════════════════
-;  DELEGATION EXECUTOR  (called by reactive layer at Priority 0)
+; Delegation
 ; ══════════════════════════════════════════════════════════════════
 to execute-delegation
 
@@ -252,7 +250,7 @@ to execute-delegation
         set is-resistant? true
         set color green
       ]
-      ; Correction ripples to 40% of neighbors
+      ; Correctio
       ask [link-neighbors] of delegated-target [
         if not is-banned? and not is-resistant? [
           if random 100 < 40 [
