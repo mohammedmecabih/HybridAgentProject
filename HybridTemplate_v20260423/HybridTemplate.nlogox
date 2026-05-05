@@ -138,9 +138,9 @@ to go
   ;;  NetLogo kör turtles i SLUMPMÄSSIG ORDNING varje tick.
   ;;  Detta gör modellen mer realistisk och agent-baserad.
   
-<<<<<<< Updated upstream
+
   ask turtles [
-=======
+
   ask agencies [ updateEnvironmentInfo_agencies ]
   ask agencies [ reactive_agencies ]
   ask agencies [ proactive_agencies ]
@@ -154,7 +154,7 @@ to go
     set label (word "P" post-id " S" post-shares " L" post-likes)
   ]
 ]
->>>>>>> Stashed changes
+
 
     ;;  HUMANS (hybrid agents) 
     if breed = humans [
