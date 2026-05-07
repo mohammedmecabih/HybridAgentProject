@@ -90,11 +90,7 @@ to updateEnvironmentInfo_agencies
       ]
       [
         ;; OM SKAPAREN ÄR EN BOT (agentBs): Banna kontot helt
-        ask creator [ 
-          set is-banned? true 
-          set color black 
-          set label "BANNED"
-        ]
+      
         ask target [ set post-removed? true die ] ;; Botens inlägg dör helt
         output-print "AGENCY: Bot bannlyst (blev svart)."
       ]

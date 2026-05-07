@@ -6,6 +6,7 @@ posts-own [
 ]
 
 agentAs-own [
+  
   homeLoc localxy agTimer1 agAlarm1
   proState previousProState waitTicks
   selectedAction actionExecuted?
@@ -37,6 +38,7 @@ to setup-agentAs
     set proState "BotCreatePost"
     set previousProState ""
     set waitTicks 0
+    
 
     set selectedAction "none"
     set actionExecuted? false
