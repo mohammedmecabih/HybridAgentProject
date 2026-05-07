@@ -33,8 +33,8 @@ __includes [
     "observer.nls"; code for observer-functions
     "testcases.nls";
     "agency.nls"
-    "bots_proactive.nls"
-    "bots_reactive.nls"
+    "agentA.nls"
+    "agentB.nls"
    
 
     ;-----------------------------------------------------------------------------------------------
@@ -138,23 +138,7 @@ to go
   ;;  NetLogo kör turtles i SLUMPMÄSSIG ORDNING varje tick.
   ;;  Detta gör modellen mer realistisk och agent-baserad.
   
-
   ask turtles [
-
-  ask agencies [ updateEnvironmentInfo_agencies ]
-  ask agencies [ reactive_agencies ]
-  ask agencies [ proactive_agencies ]
-  
-    ;; uppdatera labels på alla posts (VISNING)
-  ask posts [
-  ifelse post-viral? [
-    set label (word "P" post-id " S" post-shares " L" post-likes " VIRAL")
-    set color yellow
-  ][
-    set label (word "P" post-id " S" post-shares " L" post-likes)
-  ]
-]
-
 
     ;;  HUMANS (hybrid agents) 
     if breed = humans [
