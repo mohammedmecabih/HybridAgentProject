@@ -38,7 +38,6 @@ to setup-agencies
     set shape "house"     ;; Changes the icon to the house shape from your XML
     set color white       ;; Keeps it white for high visibility
     set size 6            ;; Makes the building significantly larger than humans
-    setxy 0 0             ;; Places the "Headquarters" in the center
     set heading 0         ;; Ensures the house isn't tilted
     
     ; Initialize BDI and FSM variables
@@ -61,35 +60,49 @@ end
 
 ; ── Called every tick from go ────────────────────────────────────
 to updateEnvironmentInfo_agencies
-  ;; 1. Hitta alla röda inlägg som skapats av botarna
-  let red-posts posts with [color = red and not post-removed?]
+  ;; 1. Lokalisera röda inlägg (viral desinformation)
+  let viral-targets posts with [color = red and not post-removed?]
   
-  ;; 2. Om det finns röda inlägg, välj det närmaste
-  if any? red-posts [
-    let target min-one-of red-posts [distance myself]
+  ;; 2. Om det finns något rött inlägg, rör dig mot det närmaste
+  if any? viral-targets [
+    let target min-one-of viral-targets [distance myself]
     
-    ;; 3. Gå mot målet
     face target
-    fd 0.4 ;; Hastighet på huset
+    fd 0.4  ;; Hastighet på huset
     
-    ;; 4. Om vi är framme (avstånd < 1.5 pga stora ikoner)
+    ;; 3. När huset når fram (avstånd < 1.5)
     if distance target < 1.5 [
-      ;; Utför en handling: Ta bort inlägget (ban/remove)
-      ask target [
-        set post-removed? true
-        set color black ;; Gör det osynligt/stängt
-        set label "REMOVED"
+      let creator [post-origin] of target ;; Vem skapade inlägget?
+
+      ;; --- DIFFERENTIERAD STRATEGI ---
+      
+      ifelse [breed] of creator = humans [
+        ;; OM SKAPAREN ÄR EN MÄNNISKA: Flagga och gör resistent (grön)
+        ask creator [
+          set is-infected? false
+          set is-resistant? true
+          set color green 
+          set label "FLAGGED"
+        ]
+        ;; Ta bort själva inlägget också så det slutar spridas
+        ask target [ set post-removed? true set color blue set label "CORRECTED" ]
+        output-print "AGENCY: Människa flaggad och korrigerad (blev grön)."
+      ]
+      [
+        ;; OM SKAPAREN ÄR EN BOT (agentBs): Banna kontot helt
+        ask creator [ 
+          set is-banned? true 
+          set color black 
+          set label "BANNED"
+        ]
+        ask target [ set post-removed? true die ] ;; Botens inlägg dör helt
+        output-print "AGENCY: Bot bannlyst (blev svart)."
       ]
       
-      ;; Uppdatera statistik för din Agency
       set bans-issued bans-issued + 1
-      output-print (word "AGENCY: Tog bort rött inlägg ID: " [post-id] of target)
-      
-      ;; Gå tillbaka till Monitoring-läge i FSM:en
-      set proState_agency "Monitoring"
     ]
   ]
-  
+
   set reactive-acted? false
 end
 
