@@ -6,7 +6,10 @@
 ; 20260428  v2.1  Added intention selection logic based on flags (Hamed)
 ; 20260428  v2.2  Integrated memory-based decision making using post types (Hamed)
 ; 20260428  v2.2  Added currentPostType and memory lists (liked/shared/ignored/reported)(Hamed)
-;tar bort den sen
+; 20260511  v2.3  Added FIPA-like communication handling for human agents: (Hamed)
+; 20260511  v2.3  receive/request processing from bots, agency confirmations, (Hamed)
+; 20260511  v2.3  decision-making for accept/reject requests,(Hamed)
+; 20260511  v2.3  and proactive inform messages to agency agents. (Hamed)
 ;***************************************************************
 
 humans-own [
@@ -26,6 +29,14 @@ humans-own [
   sourceUntrusted
   
   seenPostIds
+  
+  ;för Kommuniktion 
+  receivedBotsRequest? 
+  lastBotsSender
+  requestedPostId
+  requestedPostTopic
+  agencyConfirmed? 
+  sentAgencyInform?
 
   ;Environment
   nearbyPosts
@@ -64,7 +75,7 @@ humans-own [
   is-infected?
   is-resistant?
   is-banned?
-  
+   
   
   ;Shared 
   selectedAction
@@ -111,6 +122,15 @@ to setup-humans
     set ignoreFlag false
     set reportFlag false
     set replyFlag false
+    
+    ;för kommunikation 
+    set incoming-queue []
+    set receivedBotsRequest? false 
+    set lastBotsSender nobody
+    set requestedPostId -1
+    set requestedPostTopic "none"
+    set agencyConfirmed? false
+    set sentAgencyInform? false
 
     ; shared
     set selectedAction "none"
@@ -150,6 +170,9 @@ end
 
 
 to updateEnvironmentInfo_humans
+  
+  process-human-messages
+  
   set localxy patch-here
   
   
@@ -190,8 +213,42 @@ if [post-extremity] of currentPost < 5 [
       set commentFlag true
     ]
   ]
+  
       
 end
+
+;för ta emot meddelande från bots och bekräftelse från agency
+
+to process-human-messages
+  while [not empty? incoming-queue] [
+    let msg get-message
+    let sender get-sender msg
+    let performative get-performative msg
+    let msgContent get-content msg
+    ;bots ber human att promota ett inlägg
+    if performative = "request" [
+      if item 0 msgContent = "promote-post" [
+        set receivedBotsRequest? true
+        set lastBotsSender sender
+        set requestedPostId item 1 msgContent
+        set requestedPostTopic item 2 msgContent
+      ]
+    ]
+    
+    ;agency bekräftelse 
+     
+    if performative = "confirm" [
+      if item 0 msgContent = "report-received" [
+   
+         set agencyConfirmed? true
+      ]
+    ]
+  ]
+end
+
+
+        
+    
 
 
 to proactive_humans
@@ -200,19 +257,35 @@ end
 
 
 to Scrolling
+  if receivedBotsRequest? [
+    set proState "EvaluatePost"
+    stop
+  ]
   if postDetected [
     set proState "EvaluatePost"
   ]
+  
 end
 
 
 to EvaluatePost
+  ;för att bestämma om human vill accpetera eller ej begäran av bots. 
+  if receivedBotsRequest? [
+    ifelse random 100 < 50 [
+      set currentIntention "acceptBotsRequest"
+    ][ 
+      set currentIntention "rejectBotsRequest"
+    ]
+    set proState "DelegateAction"
+    stop
+  ]
   if not postDetected or currentPost = nobody [
     set currentIntention "None"
     set selectedAction "none"
     set proState "Scrolling"
     stop
   ]
+  
 
   ;; först: reagera på själva inlägget
   if suspiciousFlag [
@@ -220,6 +293,13 @@ to EvaluatePost
     set proState "DelegateAction"
     stop
   ]
+  
+  if reportedMemory >= 4 and not sentAgencyInform? [
+    set currentIntention "informAgency"
+    set proState "DelegateAction"
+    stop
+  ]
+  
 
   if veryInterestingFlag [
     set currentIntention "SharePost"
@@ -270,7 +350,20 @@ end
 
 
 to DelegateAction
-
+  
+  
+  if currentIntention = "acceptBotsRequest" [
+    set selectedAction "accept-bot-request"
+  ]
+ 
+  if currentIntention = "rejectBotsRequest" [
+    set selectedAction "reject-bot-request"
+  ]
+  
+  if currentIntention = "informAgency"[
+  set selectedAction "inform-agency"
+  ]
+  
   if currentIntention = "SharePost" [
     set selectedAction "share"
   ]

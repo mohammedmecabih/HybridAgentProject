@@ -5,6 +5,9 @@
 ; 20260428  v2.1  Implemented reactive actions (like, share, ignore, report, reply) (Hamed)
 ; 20260428  v2.1  Connected reactive actions to selectedAction variable (Hamed)
 ; 20260428  v2.2  Ensured only one action executed per step (subsumption logic) (Hamed)
+; 20260511  v2.3  Added reactive communication actions for human agents: (Hamed)
+; 20260511  v2.3  accept/reject bot requests and inform-agency messaging (Hamed)
+; 20260511  v2.3  using ACL-style performatives. (Hamed)
 ;***************************************************************
 
 
@@ -16,6 +19,24 @@ to reactive_humans
   set reportFlag false
   set replyFlag false
 
+  if selectedAction = "accept-bot-request" [
+    accept-bot-request
+    set selectedAction "none"
+    stop
+  ]
+  
+  if selectedAction = "reject-bot-request" [
+    reject-bot-request
+    set selectedAction "none"
+    stop
+  ]
+  
+  if selectedAction = "inform-agency" [
+  inform-agency
+  set selectedAction "none"
+  stop
+  ]
+  
   ; proactive override
   if selectedAction = "share" [
     share-post
@@ -69,7 +90,48 @@ to reactive_humans
   ignore-post
 ]
 end
+to accept-bot-request 
+  let msg create-message "agree"
+  set msg add-receiver lastBotsSender msg
+  set msg add-content (list "promote-post" requestedPostId) msg
+  send msg
+  
+  ;human hjälper till att sprida inlägg
+  set color green 
+  
+  set receivedBotsRequest? false
+  set requestedPostId -1
+  set requestedPostTopic "none"
+  set lastBotsSender nobody
 
+end
+
+to reject-bot-request 
+  let msg create-message "refuse"
+  set msg add-receiver lastBotsSender msg
+  set msg add-content (list "promote-post" requestedPostId) msg
+  send msg
+   
+  
+  set receivedBotsRequest? false
+  set requestedPostId -1
+  set requestedPostTopic "none"
+  set lastBotsSender nobody
+
+end
+
+to inform-agency
+  if any? agencies [
+    let target one-of agencies
+    let msg create-message "inform"
+    set msg add-receiver [who] of target msg
+    set msg add-content (list "suspicious-topic" currentPostType reportedMemory) msg
+    send msg
+
+    set sentAgencyInform? true
+    set color orange
+  ]
+end
 
 to like-post 
   set color blue
@@ -80,6 +142,8 @@ to like-post
   ]
   
 end
+
+
 
 to share-post
   set color green
