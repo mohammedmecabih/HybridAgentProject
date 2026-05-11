@@ -34,8 +34,8 @@ __includes [
     "observer.nls"; code for observer-functions
     "testcases.nls";
     "agency.nls"
-    "agentA.nls"
-    "agentB.nls"
+    "bots_proactive.nls"
+    "bots_reactive.nls"
    
 
     ;-----------------------------------------------------------------------------------------------
