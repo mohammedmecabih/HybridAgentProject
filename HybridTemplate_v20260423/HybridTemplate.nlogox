@@ -83,6 +83,7 @@ to setup
   set totalShares 0
   set viralTrend 0
   set numberOfReports 0
+  set numberOFRepost 0
   
   set bot-frequency-threshold 5
   set viral-crisis-threshold 10
@@ -96,15 +97,16 @@ to setup
   set total-posts-shared 0
   set total-viral-posts 0
 
-  set viral-share-threshold 10
-  set viral-like-threshold 5
+  set viral-share-threshold 100
+  set viral-like-threshold 100
 
   set min-post-extremity 1
   set max-post-extremity 10
   set similar-post-mutation 2
 
-set share-probability 60
-set cautious-share-probability 30
+  set share-probability 60
+  set cautious-share-probability 30
+
   ;; environment
   setup-environment
 
@@ -206,11 +208,14 @@ to go
     if Source = "Only View" [ vid:record-view ]
     if Source = "With Interface" [ vid:record-interface ]
   ]
+
+  if TERMINATE [ stop ]
 end
 
 
 ;***************************end to go part ******************************************************************************************************************
-;************************************************************************************************************************************************************]]></code>
+;************************************************************************************************************************************************************
+]]></code>
   <widgets>
     <view x="646" wrappingAllowedX="true" y="21" frameRate="60.0" minPycor="0" height="599" showTickCounter="true" patchSize="17.5224" fontSize="10" wrappingAllowedY="true" width="1178" tickCounterLabel="ticks" maxPycor="33" updateMode="0" maxPxcor="66" minPxcor="0"></view>
     <note x="1594" y="652" backgroundDark="0" fontSize="13" width="240" markdown="false" height="27" textColorDark="-1" textColorLight="-16777216" backgroundLight="0">_________ Simulation Recorder________</note>

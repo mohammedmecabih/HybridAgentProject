@@ -37,6 +37,7 @@ globals [
   
   
   ; --- BOT SYSTEM GLOBALS ---
+  numberOFRepost
 
 next-post-id
 last-created-post-id
