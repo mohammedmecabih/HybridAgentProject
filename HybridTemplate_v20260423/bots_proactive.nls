@@ -146,8 +146,28 @@ to do-generate-similar-post
   let basePostId [post-id] of previousPostForSimilarity
   let newExtremity mutate-extremity baseExtremity
 
+  set numberOFRepost numberOFRepost + 1
+
   create-post-from-values baseTopic newExtremity basePostId
 end
+
+
+to update-post-labels
+  ask posts [
+    ifelse post-viral? [
+      set label (word "P" post-id " S" post-shares " L" post-likes " VIRAL")
+    ] [
+      set label (word "P" post-id " S" post-shares " L" post-likes)
+    ]
+
+    if post-removed? [
+      set label "REMOVED"
+    ]
+  ]
+end
+
+
+
 
 to create-post-from-values [topic extremity parentId]
   let newPostId next-post-id
@@ -168,7 +188,7 @@ to create-post-from-values [topic extremity parentId]
     set shape "circle"
     set size 2.4
     set color post-color post-extremity
-    set label (word "P" post-id " S" post-shares)
+    set label (word "P" post-id " S" post-shares " L" post-likes)
 
     move-to one-of patches
   ]
@@ -299,20 +319,26 @@ to finish-active-post
 end
 
 to update-post-status
-  if activePost = nobody [ stop ]
-
-  ask activePost [
+  ask posts [
     set post-age post-age + 1
 
     if post-shares >= viral-share-threshold and
        post-likes >= viral-like-threshold and
-       not post-viral? [
+       not post-viral? and
+       not post-removed? [
       set post-viral? true
       set total-viral-posts total-viral-posts + 1
       set viralTrend viralTrend + 1
       set color yellow
     ]
   ]
+
+  update-post-labels
+
+  set observedViralPost nobody
+  set observedRemovedPost nobody
+  set hasViralPost? false
+  set hasRemovedPost? false
 
   if activePost != nobody [
     if [post-viral?] of activePost and not [post-removed?] of activePost [

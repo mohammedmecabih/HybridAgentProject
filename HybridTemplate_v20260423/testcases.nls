@@ -150,3 +150,80 @@ to test_memory_behavior
   ]
 
 end
+
+
+
+
+
+; Bots_test 1
+;; TEST: test_bot_create_post
+;; Kontrollerar att den proaktiva boten kan skapa ett nytt inlägg korrekt.
+;; Testet verifierar att:
+;; 1. Exakt ett post-agent skapas
+;; 2. Första posten får korrekt post-id
+;; 3. Posten startar med 0 shares och 0 likes
+;; 4. Posten inte är viral eller borttagen vid skapelse
+;; Detta testar create-post logiken i bots_proactive.nls
+
+to test_bot_create_post
+  clear-all
+
+  ;; required globals for bot code
+  set next-post-id 0
+  set total-posts-created 0
+  set last-created-post-id -1
+  set min-post-extremity 1
+  set max-post-extremity 10
+  set similar-post-mutation 2
+  set viral-share-threshold 10
+  set viral-like-threshold 5
+  set total-viral-posts 0
+  set viralTrend 0
+  set debugMode false
+
+  setup-environment
+  setup-agentAs
+
+  ask one-of agentAs [
+    set createPostFlag true
+    reactive_agentAs
+  ]
+
+  print "TEST BOT CREATE POST"
+
+  if count posts = 1 [
+    print "[PASS] one post was created"
+  ]
+
+  if count posts != 1 [
+    print (word "[FAIL] expected 1 post, got " count posts)
+  ]
+
+  let p one-of posts
+
+  if p != nobody [
+    if [post-id] of p = 0 [
+      print "[PASS] post-id is 0"
+    ]
+
+    if [post-id] of p != 0 [
+      print (word "[FAIL] expected post-id 0, got " [post-id] of p)
+    ]
+
+    if [post-shares] of p = 0 and [post-likes] of p = 0 [
+      print "[PASS] post starts with 0 shares and 0 likes"
+    ]
+
+    if [post-shares] of p != 0 or [post-likes] of p != 0 [
+      print "[FAIL] post does not start with 0 shares/likes"
+    ]
+
+    if [post-viral?] of p = false and [post-removed?] of p = false [
+      print "[PASS] post starts as not viral and not removed"
+    ]
+
+    if [post-viral?] of p = true or [post-removed?] of p = true [
+      print "[FAIL] post viral/removed status is wrong"
+    ]
+  ]
+end
