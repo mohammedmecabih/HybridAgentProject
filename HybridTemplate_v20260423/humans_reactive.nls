@@ -8,6 +8,7 @@
 ; 20260511  v2.3  Added reactive communication actions for human agents: (Hamed)
 ; 20260511  v2.3  accept/reject bot requests and inform-agency messaging (Hamed)
 ; 20260511  v2.3  using ACL-style performatives. (Hamed)
+; 20260512  v2.4  Added broadcast-warning, broadcast-share, request-agency (Mohammed)
 ;***************************************************************
 
 
@@ -18,6 +19,29 @@ to reactive_humans
   set ignoreFlag false
   set reportFlag false
   set replyFlag false
+  
+  
+  
+  ;; 1. Mohammed v2.4 — Proactive communication actions
+  
+
+  if selectedAction = "broadcast-warning" [
+    broadcast-warning
+    set selectedAction "none"
+    stop
+  ]
+
+  if selectedAction = "broadcast-share" [
+    broadcast-share
+    set selectedAction "none"
+    stop
+  ]
+
+  if selectedAction = "request-agency" [
+    request-agency
+    set selectedAction "none"
+    stop
+  ]
 
   if selectedAction = "accept-bot-request" [
     accept-bot-request
@@ -141,6 +165,44 @@ to like-post
     ]
   ]
   
+end
+
+
+; Mohammed v2.4 — Broadcast and Request Functions
+to broadcast-warning
+  ;; Skickar varning till andra humans och agency i närheten
+  let nearbyAgents (turtle-set (other humans in-radius 10) (agencies in-radius 10))
+  foreach nearbyAgents [agent ->
+    let msg create-message "inform"
+    set msg add-receiver [who] of agent msg
+    set msg add-content msg (list "warning" currentPostType)
+    send msg
+  ]
+  set color orange
+end
+
+to broadcast-share
+  ;; Delar intressant inlägg med andra humans och agency i närheten
+  let nearbyAgents (turtle-set (other humans in-radius 10) (agencies in-radius 10))
+  foreach nearbyAgents [agent ->
+    let msg create-message "inform"
+    set msg add-receiver [who] of agent msg
+    set msg add-content msg (list "interesting-post" currentPostType)
+    send msg
+  ]
+  set color green
+end
+
+to request-agency
+  ;; Ber myndigheten att utreda ett specifikt inlägg eller användare
+  if any? agencies [
+    let target one-of agencies
+    let msg create-message "request"
+    set msg add-receiver [who] of target msg
+    set msg add-content msg (list "investigate-post" currentPostType)
+    send msg
+    set color cyan
+  ]
 end
 
 
