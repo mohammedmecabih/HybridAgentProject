@@ -1,0 +1,80 @@
+;; --- AGENCY PROACTIVE: "HJÄRNAN" (FSM & Planering) ---
+
+to update-agency-proactive
+  ;; Finite State Machine (FSM) logik
+  if proState_agency = "Monitoring"     [ agency-monitoring ]
+  if proState_agency = "Investigating"  [ agency-investigating ]
+  if proState_agency = "Deciding"       [ agency-deciding ]
+  if proState_agency = "Reporting"      [ agency-reporting ]
+end
+
+to agency-monitoring
+  ;; Letar efter bots som postar misstänkt ofta
+  let potential-suspects turtles with [
+    (breed = bots_proactive or breed = bots_reactive) and size > 0
+  ]
+  
+  if any? potential-suspects [
+    let suspect one-of potential-suspects
+    
+    ;; Kolla i botens egen variabel (som vi flyttade till -own i globals.nls)
+    if [post-frequency] of suspect > bot-frequency-threshold [
+      set investigation-target suspect
+      set investigation-ticks 0
+      set proState_agency "Investigating"
+      output-print (word "PROACTIVE: Investigating bot " [who] of suspect)
+    ]
+  ]
+end
+
+to agency-investigating
+  if investigation-target = nobody [ set proState_agency "Monitoring" stop ]
+  
+  ;; Vänta 3 ticks för att simulera en "utredning"
+  set investigation-ticks investigation-ticks + 1
+  if investigation-ticks >= 3 [ 
+    set proState_agency "Deciding" 
+  ]
+end
+
+to agency-deciding
+  if investigation-target = nobody [ set proState_agency "Monitoring" stop ]
+  
+  ;; Bestäm straff: Mastermind får bara en varning, andra bannas
+  ifelse [breed] of investigation-target = bots_proactive [
+    set delegated-action "publish-correction"
+  ] [
+    set delegated-action "full-ban"
+  ]
+  
+  set delegated-target investigation-target
+  set has-delegation? true
+  set proState_agency "Reporting"
+end
+
+to agency-reporting
+  ;; Här skickas beslutet till verkställande (Delegation)
+  if has-delegation? [
+    execute-delegation
+  ]
+  set investigation-target nobody
+  set proState_agency "Monitoring"
+end
+
+to execute-delegation
+  if delegated-target != nobody [
+    ifelse delegated-action = "full-ban" [
+      ;; Dubbelkolla så vi inte råkar banna Mastermind
+      if [breed] of delegated-target != bots_proactive [
+        ask delegated-target [ set color black set size 0 ]
+        set bans-issued bans-issued + 1
+      ]
+    ] [
+      ;; Gul markering för Mastermind
+      ask delegated-target [ set color yellow set label "WATCHED" ]
+      set corrections-published corrections-published + 1
+    ]
+  ]
+  set delegated-action "none"
+  set has-delegation?  false
+end

@@ -59,7 +59,41 @@ debugMode
   report-crisis-threshold
   report-flag-threshold
   
+  likes-received
+  shares-received
+  
   
   
 ]
+
+
+
+agencies-own [
+  proState_agency
+  investigation-target
+  investigation-ticks
+  bans-issued
+  corrections-published
+  delegated-action
+  delegated-target
+  has-delegation?
+]
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 ;******************* end global variables *****************************************************************************************************************

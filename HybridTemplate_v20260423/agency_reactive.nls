@@ -1,0 +1,55 @@
+;; --- AGENCY REACTIVE: Snabb respons ---
+
+to setup-agencies 
+  create-agencies 1 [ 
+  set shape "house" 
+  set color white 
+  set size 6
+    
+  ]
+end 
+
+
+to update-agency-reactive
+  ;; 1. Skapa en lista på alla misstänkta inlägg som inte redan har hanterats
+  ;; (Vi kollar bara på inlägg där post-removed? är false)
+  let targets posts with [not post-removed? and (post-extremity > 6 or color = yellow)]
+
+  if any? targets [
+    ;; Hitta det närmaste misstänkta inlägget
+    let closest-target min-one-of targets [distance myself]
+    
+    ;; Gå mot inlägget
+    face closest-target
+    fd 0.5
+
+    ;; 2. Om myndigheten är framme vid inlägget, fatta beslut
+    if distance closest-target < 1.5 [
+      handle-target-action closest-target
+    ]
+  ]
+  
+  ;; (Här kan du ha kvar din kris-ban logik för hela bots om du vill)
+end
+
+to handle-target-action [target]
+  ;; Slumpa en siffra mellan 1 och 100
+  let slump-tal (random 100) + 1
+  
+  ifelse slump-tal > 50 [
+    ;; --- FALL A: Siffran > 50 -> RADERA ---
+    output-print (word "AGENCY: Siffra " slump-tal " - Raderar inlägg och går vidare.")
+    ask target [ die ] 
+    ;; Eftersom inlägget dör (die), finns det inte kvar i 'targets' listan nästa tick.
+  ] [
+    ;; --- FALL B: Siffran <= 50 -> SLÄPP ---
+    output-print (word "AGENCY: Siffra " slump-tal " - Släpper inlägg och letar nästa.")
+    
+    ask target [ 
+      ;; För att myndigheten ska sluta stanna vid detta inlägg måste vi 
+      ;; ändra dess status så att det inte längre dyker upp i 'targets' listan.
+      set post-removed? true 
+      set color green ;; Visar visuellt att inlägget är "godkänt/släppt"
+    ]
+  ]
+end
