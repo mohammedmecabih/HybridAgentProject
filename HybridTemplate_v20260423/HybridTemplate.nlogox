@@ -33,7 +33,8 @@ __includes [
     "humans_reactive.nls" ; code for <agentB>, to be replace with proper breed
     "observer.nls"; code for observer-functions
     "testcases.nls";
-    "agency.nls"
+    "agency_reactive.nls"
+    "agency_proactive.nls"
     "bots_proactive.nls"
     "bots_reactive.nls"
    
@@ -183,14 +184,16 @@ to go
 
     ;;  AGENCY (meta-agent) 
     if breed = agencies [
-      ;; Läs globala signaler (viralTrend, reports, thresholds)
-      updateEnvironmentInfo_agencies
+      
+    
+
+      
 
       ;; Reaktivt lager (krishantering)
-      reactive_agencies
+      update-agency-reactive
 
       ;; Proaktivt lager 
-      proactive_agencies
+      update-agency-proactive
     ]
   ]
   update-post-labels
