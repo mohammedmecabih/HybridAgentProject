@@ -97,8 +97,8 @@ to setup
   set total-posts-shared 0
   set total-viral-posts 0
 
-  set viral-share-threshold 100
-  set viral-like-threshold 100
+  set viral-share-threshold 20
+  set viral-like-threshold 15
 
   set min-post-extremity 1
   set max-post-extremity 10

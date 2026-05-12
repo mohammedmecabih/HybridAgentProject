@@ -10,11 +10,6 @@
 ; 20260511  v2.3  receive/request processing from bots, agency confirmations, (Hamed)
 ; 20260511  v2.3  decision-making for accept/reject requests,(Hamed)
 ; 20260511  v2.3  and proactive inform messages to agency agents. (Hamed)
-; 20260511  v2.4 - Implementerat broadcast-warning, broadcast-share,
-;                   request-agency(mohammed)
-;                - Integrerat proaktiva kommunikationsintentioner i FSM (mohammed)
-;                - Konfliktlösning mellan flaggor (suspicious/interesting) (mohammed)
-;                - Dokumentation och strukturering av EvaluatePost (mohammed)
 ;***************************************************************
 
 humans-own [
@@ -349,29 +344,6 @@ to EvaluatePost
     stop
   ]
 
-  ;; 9. PROAKTIVT: Broadcast-warning (Mohammed)
-  ;; Körs först EFTER att human redan rapporterat liknande inlägg
-  if suspiciousFlag and reportedMemory > 0 [
-    set currentIntention "WarnOthers"
-    set proState "DelegateAction"
-    stop
-  ]
-
-  ;; 10. PROAKTIVT: Broadcast-share (Mohammed)
-  ;; Körs först EFTER att human redan delat liknande inlägg
-  if veryInterestingFlag and sharedMemory > 0 [
-    set currentIntention "ShareBroadcast"
-    set proState "DelegateAction"
-    stop
-  ]
-
-  ;; 11. PROAKTIVT: Request agency investigation (Mohammed)
-  if reportedMemory >= 6 [
-    set currentIntention "RequestAgencyInvestigation"
-    set proState "DelegateAction"
-    stop
-  ]
-
   set currentIntention "IgnorePost"
   set proState "DelegateAction"
 end
@@ -410,22 +382,6 @@ to DelegateAction
 
   if currentIntention = "ReplyComment" [
     set selectedAction "reply"
-  ]
-   ;;  NYA INTENTIONER FRÅN TABELLEN (Mohammed)
-
-  ;; Broadcast warning 
-  if currentIntention = "WarnOthers" [
-    set selectedAction "broadcast-warning"
-  ]
-
-  ;; Broadcast share 
-  if currentIntention = "ShareBroadcast" [
-    set selectedAction "broadcast-share"
-  ]
-
-  ;; Request agency investigation 
-  if currentIntention = "RequestAgencyInvestigation" [
-    set selectedAction "request-agency"
   ]
 
   set proState "Scrolling"
