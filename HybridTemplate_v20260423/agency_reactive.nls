@@ -49,7 +49,7 @@ to handle-target-action [target]
       ;; För att myndigheten ska sluta stanna vid detta inlägg måste vi 
       ;; ändra dess status så att det inte längre dyker upp i 'targets' listan.
       set post-removed? true 
-      set color green ;; Visar visuellt att inlägget är "godkänt/släppt"
+     
     ]
   ]
 end

@@ -1,3 +1,4 @@
+
 agentBs-own [
   state
   homeLoc
@@ -10,6 +11,8 @@ agentBs-own [
   willShare?
   riskTolerance
   shareCooldown
+  
+   ;; LÄGG TILL
 
   is-banned?
   post-frequency
@@ -42,7 +45,7 @@ to setup-agentBs
     set willShare? false
     set riskTolerance 4 + random 7
     set shareCooldown 0
-
+    
     set is-banned? false
     set post-frequency 0
     set account-age random 20
@@ -52,24 +55,12 @@ end
 to updateEnvironmentInfo_agentBs
   set localxy patch-here
 
-  if is-banned? [
-    set color violet
-    set label "BANNED"
-    stop
-  ]
-
   if shareCooldown > 0 [
     set shareCooldown shareCooldown - 1
   ]
 end
 
 to reactive_agentBs
-  if is-banned? [
-    set color violet
-    set label "BANNED"
-    stop
-  ]
-
   if state = "check" [ check-messages stop ]
   if state = "decide" [ decide-share stop ]
   if state = "share" [ do-share stop ]
@@ -77,9 +68,6 @@ to reactive_agentBs
 end
 
 to check-messages
-  set color blue
-  set label "CHECK"
-
   if not empty? incoming-queue [
     set currentMessage get-message
 
@@ -103,9 +91,6 @@ to check-messages
 end
 
 to decide-share
-  set color cyan
-  set label "DECIDE"
-
   if currentPost = nobody [
     set state "ignore"
     stop
@@ -142,29 +127,15 @@ to decide-share
 end
 
 to do-share
-  set color green
-  set label "SHARE"
-
   if currentPost != nobody [
     ask currentPost [
       if not post-removed? [
         set post-shares post-shares + 1
-
-        ifelse post-viral? [
-          set label (word "P" post-id " S" post-shares " L" post-likes " VIRAL")
-        ] [
-          set label (word "P" post-id " S" post-shares " L" post-likes)
-        ]
       ]
     ]
 
     set sharedPostIds lput currentPostId sharedPostIds
-
-    ; Bot statistics used by the shared model and agency.
     set total-posts-shared total-posts-shared + 1
-    set totalShares totalShares + 1
-    set post-frequency post-frequency + 1
-
     set shareCooldown 10
   ]
 
@@ -172,9 +143,6 @@ to do-share
 end
 
 to do-ignore
-  set color gray
-  set label "IGNORE"
-
   if currentPostId != -1 and not member? currentPostId ignoredPostIds [
     set ignoredPostIds lput currentPostId ignoredPostIds
   ]

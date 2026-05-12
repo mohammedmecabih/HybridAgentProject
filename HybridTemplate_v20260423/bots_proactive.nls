@@ -146,8 +146,6 @@ to do-generate-similar-post
   let basePostId [post-id] of previousPostForSimilarity
   let newExtremity mutate-extremity baseExtremity
 
-  set numberOFRepost numberOFRepost + 1
-
   create-post-from-values baseTopic newExtremity basePostId
 end
 
@@ -313,7 +311,6 @@ to update-post-status
       set total-viral-posts total-viral-posts + 1
       set viralTrend viralTrend + 1
       set color yellow
-      set label (word "P" post-id " S" post-shares " L" post-likes " VIRAL")
     ]
   ]
 
