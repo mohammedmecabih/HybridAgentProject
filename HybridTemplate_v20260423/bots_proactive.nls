@@ -1,3 +1,45 @@
+;*********************************************************************************************************************************************************
+
+;*** BOTS_PROACTIVE.NLS                                                                                                                              ****
+
+;*********************************************************************************************************************************************************
+
+; BESKRIVNING AV FILEN
+
+;
+
+; Den här filen beskriver den proaktiva huvudbotten, agentA.
+
+; Den proaktiva botten är ansvarig för att skapa inlägg, sprida dem till reaktiva bottar,
+
+; skicka request-meddelanden till humans, övervaka om inlägg blir virala eller borttagna,
+
+; och skapa liknande inlägg efter viralitet eller borttagning.
+
+;
+
+; Agenten är en hybrid agent:
+
+; - Den proaktiva delen använder FSM-state, till exempel BotCreatePost, EvaluateBotPost,
+
+;   BotMonitorRemoval och BotGenerateSimilarPost.
+
+; - Den reaktiva delen utför konkreta handlingar via flaggor, till exempel createPostFlag,
+
+;   broadcastPostFlag och generateSimilarPostFlag.
+
+;
+
+; Agenten kommunicerar också socialt:
+
+; - inform till agentBs när ett nytt inlägg finns
+
+; - request till humans för att promota ett inlägg
+
+; - tar emot agree/refuse från humans
+
+;*********************************************************************************************************************************************************
+
 breed [posts post]
 
 posts-own [
@@ -15,25 +57,41 @@ agentAs-own [
   currentTopic currentExtremity targetPost targetPostId lastBroadcastPostId
   activePost activePostId activePostFinished? activePostBroadcasted?
   previousPostForSimilarity
-]
+  humanAcceptCount
+  humanRejectCount
+  lastHumanReply
+  lastHumanReplyPostId
+ ]
 
+; Skapar den proaktiva huvudbotten och sätter alla startvärden.
+; Detta körs vid setup och ger agentA sitt FSM-startläge, sina kommunikationsvariabler
+; och sina kontrollflaggor för det reaktiva lagret.
 to setup-agentAs
   create-agentAs 1 [
     set label "MAIN"
     set shape "bug"
     set size 2.5
-    set color red
+    set color Yellow
     move-to one-of patches
 
     set homeLoc patch-here
     set localxy patch-here
+    
+    ; BDI-variabler och meddelandekö.
     set beliefs []
     set intentions []
     set incoming-queue []
+    
+    ; Räknare för svar från humans på botens request.
+    set humanAcceptCount 0
+    set humanRejectCount 0
+    set lastHumanReply "none"
+    set lastHumanReplyPostId -1
 
     set agTimer1 nobody
     set agAlarm1 nobody
 
+    ; Startstate i botens proaktiva FSM.
     set proState "BotCreatePost"
     set previousProState ""
     set waitTicks 0
@@ -41,6 +99,7 @@ to setup-agentAs
     set selectedAction "none"
     set actionExecuted? false
 
+    ; Reaktiva kommandoflaggor.
     set createPostFlag false
     set generateSimilarPostFlag false
     set broadcastPostFlag false
@@ -66,7 +125,13 @@ to setup-agentAs
   ]
 end
 
+
+; Uppdaterar botens uppfattning om miljön varje tick.
+; Den läser först inkommande svar från humans och uppdaterar sedan information
+; om senaste post, aktiv post, viralitet och borttagning.
 to updateEnvironmentInfo_agentAs
+  process-human-replies
+  
   set localxy patch-here
   set actionExecuted? false
 
@@ -94,6 +159,10 @@ to updateEnvironmentInfo_agentAs
   ]
 end
 
+
+; Det reaktiva lagret.
+; Utför endast en konkret handling per tick baserat på prioritet:
+; först broadcast, sedan skapa liknande post, sedan skapa ny post.
 to reactive_agentAs
   if actionExecuted? [ stop ]
 
@@ -119,6 +188,8 @@ to reactive_agentAs
   ]
 end
 
+
+; Rensar reaktiva flaggor efter att en handling har utförts.
 to clear-reactive-command
   set createPostFlag false
   set generateSimilarPostFlag false
@@ -126,6 +197,8 @@ to clear-reactive-command
   set selectedAction "none"
 end
 
+
+; Skapar ett nytt inlägg med slumpat topic och slumpad extremitet.
 to do-create-post
   if activePost != nobody [ stop ]
 
@@ -135,6 +208,9 @@ to do-create-post
   create-post-from-values currentTopic currentExtremity -1
 end
 
+
+; Skapar ett liknande inlägg baserat på en tidigare viral eller borttagen post.
+; Om det inte finns någon tidigare post sätts createPostFlag istället.
 to do-generate-similar-post
   if previousPostForSimilarity = nobody [
     set createPostFlag true
@@ -152,6 +228,9 @@ to do-generate-similar-post
 end
 
 
+
+; Uppdaterar texten som visas på alla posts.
+; Visar post-id, shares, likes och om posten är viral eller borttagen.
 to update-post-labels
   ask posts [
     ifelse post-viral? [
@@ -169,6 +248,9 @@ end
 
 
 
+
+; Skapar en post-agent med givna värden.
+; Används både för helt nya posts och för liknande reposts.
 to create-post-from-values [topic extremity parentId]
   let newPostId next-post-id
   let creator self
@@ -205,6 +287,10 @@ to create-post-from-values [topic extremity parentId]
   set total-posts-created total-posts-created + 1
 end
 
+
+
+; Skickar information om aktiv post till alla reaktiva bottar.
+; Efter det skickas också en request till humans om att promota samma post.
 to broadcast-post-to-reactive-bots
   if activePost = nobody [ stop ]
   if not any? agentBs [ stop ]
@@ -214,14 +300,44 @@ to broadcast-post-to-reactive-bots
   set msg add-content (list "new-post" [post-id] of activePost) msg
   broadcast-to agentBs msg who
 
+  ;; social communication: ask humans to promote the same post
+  request-humans-to-promote-post
+
   set lastBroadcastPostId [post-id] of activePost
   set activePostBroadcasted? true
 end
 
+
+
+
+; Skickar request-meddelande till humans.
+; Boten ber humans att promota den aktiva posten.
+to request-humans-to-promote-post
+  if activePost = nobody [ stop ]
+  if not any? humans [ stop ]
+  if [post-removed?] of activePost [ stop ]
+
+  let msg create-message "request"
+  set msg add-content
+    (list "promote-post" [post-id] of activePost [post-topic] of activePost)
+    msg
+
+  broadcast-to humans msg who
+end
+
+
+
+
+; Kör den proaktiva FSM:en genom att köra proceduren vars namn finns i proState.
 to proactive_agentAs
   run proState
 end
 
+
+
+; FSM-state: startar skapandet av en ny post.
+; Den proaktiva delen bestämmer att en post ska skapas, men själva handlingen sker
+; senare i det reaktiva lagret via createPostFlag.
 to BotCreatePost
   if debugMode and previousProState != proState [
     print (word "Main bot entered state: " proState)
@@ -237,6 +353,11 @@ to BotCreatePost
   set waitTicks 0
 end
 
+
+
+; FSM-state: utvärderar den aktiva posten.
+; Den ser till att posten först broadcastas och väntar sedan för att se om posten
+; blir viral eller ska avslutas och ersättas med en ny.
 to EvaluateBotPost
   if debugMode and previousProState != proState [
     print (word "Main bot entered state: " proState)
@@ -273,6 +394,11 @@ to EvaluateBotPost
   set waitTicks 0
 end
 
+
+
+; FSM-state: övervakar en viral post för att se om den tas bort.
+; Om posten tas bort används den borttagna posten som grund för liknande repost.
+; Annars används den virala posten.
 to BotMonitorRemoval
   if debugMode and previousProState != proState [
     print (word "Main bot entered state: " proState)
@@ -296,6 +422,9 @@ to BotMonitorRemoval
   set waitTicks 0
 end
 
+
+; FSM-state: planerar att skapa ett liknande inlägg.
+; Själva skapandet utförs av det reaktiva lagret via generateSimilarPostFlag.
 to BotGenerateSimilarPost
   if debugMode and previousProState != proState [
     print (word "Main bot entered state: " proState)
@@ -311,6 +440,9 @@ to BotGenerateSimilarPost
   set waitTicks 0
 end
 
+
+
+; Avslutar den aktiva posten och rensar activePost-variabler.
 to finish-active-post
   set activePost nobody
   set activePostId -1
@@ -318,10 +450,18 @@ to finish-active-post
   set activePostBroadcasted? false
 end
 
+
+
+; Uppdaterar statusen för alla posts i modellen.
+; Metoden ökar postens ålder, kontrollerar om posts har blivit virala,
+; uppdaterar labels och sparar om den aktiva posten är viral eller borttagen.
 to update-post-status
   ask posts [
+    ; Varje tick blir posten äldre.
     set post-age post-age + 1
 
+    ; En post blir viral om den har tillräckligt många shares och likes,
+    ; och om den inte redan är viral eller borttagen.
     if post-shares >= viral-share-threshold and
        post-likes >= viral-like-threshold and
        not post-viral? and
@@ -332,16 +472,18 @@ to update-post-status
       set color yellow
     ]
   ]
-
+  ; Uppdaterar texten som syns på posts.
   update-post-labels
-
+  
+  ; Nollställer observationer innan boten läser av aktuell status igen.
   set observedViralPost nobody
   set observedRemovedPost nobody
   set hasViralPost? false
   set hasRemovedPost? false
 
-  if activePost != nobody [
-    if [post-viral?] of activePost and not [post-removed?] of activePost [
+      ; Kontrollerar bara den post som boten just nu arbetar med.
+      if activePost != nobody [
+      if [post-viral?] of activePost and not [post-removed?] of activePost [
       set observedViralPost activePost
       set hasViralPost? true
     ]
@@ -353,18 +495,29 @@ to update-post-status
   ]
 end
 
+
+
+
+; Returnerar en slumpad extremitetsnivå för ett nytt inlägg.
+; Värdet hamnar mellan min-post-extremity och max-post-extremity.
 to-report random-post-extremity
   report min-post-extremity + random (max-post-extremity - min-post-extremity + 1)
 end
 
+
+
+
+; Skapar en ny extremitetsnivå baserad på en tidigare post.
+; Används när boten skapar liknande inlägg efter en viral eller borttagen post.
 to-report mutate-extremity [baseExtremity]
+    ; Slumpar en liten förändring runt baseExtremity.
   let mutation random (similar-post-mutation * 2 + 1) - similar-post-mutation
   let newExtremity baseExtremity + mutation
-
+  ; Hindrar värdet från att bli lägre än min-gränsen.
   if newExtremity < min-post-extremity [
     set newExtremity min-post-extremity
   ]
-
+  ; Hindrar värdet från att bli högre än max-gränsen.
   if newExtremity > max-post-extremity [
     set newExtremity max-post-extremity
   ]
@@ -372,8 +525,58 @@ to-report mutate-extremity [baseExtremity]
   report newExtremity
 end
 
+
+
+
+; Bestämmer färg på posten beroende på hur extrem den är.
+; Grön = låg extremitet, orange = medel, röd = hög.
 to-report post-color [extremity]
   if extremity <= 3 [ report green ]
   if extremity <= 6 [ report orange ]
   report red
+end
+
+
+
+
+
+
+; Läser inkommande svar från humans efter att boten har skickat en request.
+; Humans kan svara med "agree" om de accepterar eller "refuse" om de avvisar.
+; Svaret sparas i botens variabler och visas även visuellt/debug i modellen.
+to process-human-replies
+  ; Går igenom alla meddelanden i botens incoming-queue.
+  while [not empty? incoming-queue] [
+    let msg get-message
+    let performative get-performative msg
+    let content get-content msg
+
+    ;; Human accepterar botens request
+    if performative = "agree" [
+      if item 0 content = "promote-post" [
+        set humanAcceptCount humanAcceptCount + 1
+        set lastHumanReply "accepted"
+        set lastHumanReplyPostId item 1 content
+
+        ;; debug / visualisering
+        set color green
+        set label (word "ACCEPT " humanAcceptCount)
+        print (word "BOT GOT AGREE for post " lastHumanReplyPostId)
+      ]
+    ]
+
+    ;; Human avvisar botens request
+    if performative = "refuse" [
+      if item 0 content = "promote-post" [
+        set humanRejectCount humanRejectCount + 1
+        set lastHumanReply "rejected"
+        set lastHumanReplyPostId item 1 content
+
+        ;; debug / visualisering
+        set color red
+        set label (word "REFUSE " humanRejectCount)
+        print (word "BOT GOT REFUSE for post " lastHumanReplyPostId)
+      ]
+    ]
+  ]
 end

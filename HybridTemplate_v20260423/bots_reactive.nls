@@ -1,3 +1,24 @@
+;*********************************************************************************************************************************************************
+;*** BOTS_REACTIVE.NLS                                                                                                                               ****
+;*********************************************************************************************************************************************************
+; BESKRIVNING AV KLASSEN
+;
+; agentB representerar reaktiva bottar i modellen.
+;
+; Dessa bottar skapar inte egna inlägg utan tar emot meddelanden från bots_proactive
+; om nya inlägg som har skapats. Därefter analyserar de inlägget och bestämmer om
+; de ska dela eller ignorera det.
+;
+; Botten använder en enkel tillståndsmaskin (FSM):
+; - "check"  : kontrollerar inkommande meddelanden
+; - "decide" : bestämmer om inlägget ska delas eller ignoreras
+; - "share"  : delar inlägget och ökar antal shares
+; - "ignore" : ignorerar inlägget
+;
+; Botten kan även bli bannad av agency-agenten.
+; Om is-banned? = true slutar botten att agera.
+;*********************************************************************************************************************************************************
+
 agentBs-own [
   state
   homeLoc
@@ -16,6 +37,7 @@ agentBs-own [
   account-age
 ]
 
+; Skapar alla reaktiva bottar och initialiserar deras variabler och starttillstånd.
 to setup-agentBs
   create-agentBs Number_AgentB [
     set shape "bug"
@@ -26,75 +48,103 @@ to setup-agentBs
     set homeLoc patch-here
     set localxy patch-here
 
+    ; BDI-struktur och meddelandekö
     set beliefs []
     set intentions []
     set incoming-queue []
 
+    ; Första tillståndet i FSM
     set state "check"
 
+    ; Ingen aktiv post eller meddelande vid start
     set currentMessage nobody
     set currentPost nobody
     set currentPostId -1
 
+    ; Minneslistor för delade och ignorerade posts
     set sharedPostIds []
     set ignoredPostIds []
 
     set willShare? false
+
+    ; Varje bot får olika risktolerans
     set riskTolerance 4 + random 7
+
+    ; Cooldown för att förhindra spam-delning
     set shareCooldown 0
 
+    ; Statistik och status
     set is-banned? false
     set post-frequency 0
     set account-age random 20
   ]
 end
 
+; Uppdaterar information från omgivningen varje tick.
 to updateEnvironmentInfo_agentBs
   set localxy patch-here
 
+  ; Bannade bottar får inte agera längre
   if is-banned? [
     set color violet
     set label "BANNED"
     stop
   ]
 
+  ; Minskar cooldown över tid
   if shareCooldown > 0 [
     set shareCooldown shareCooldown - 1
   ]
 end
 
+; Kör den reaktiva FSM-logiken beroende på aktuellt state.
 to reactive_agentBs
+  ; Stoppar direkt om botten är bannad
   if is-banned? [
     set color violet
     set label "BANNED"
     stop
   ]
 
+  ; Kör rätt metod beroende på state
   if state = "check" [ check-messages stop ]
   if state = "decide" [ decide-share stop ]
   if state = "share" [ do-share stop ]
   if state = "ignore" [ do-ignore stop ]
 end
 
+; Läser inkommande meddelanden från incoming-queue.
 to check-messages
   set color blue
   set label "CHECK"
 
+  ; Kontrollerar om kön innehåller meddelanden
   if not empty? incoming-queue [
+
+    ; Hämtar första meddelandet ur kön
     set currentMessage get-message
 
+    ; Kontrollerar att det är ett inform-meddelande
     if get-performative currentMessage = "inform" [
+
       let content get-content currentMessage
 
+      ; Kontrollerar att innehållet gäller ett nytt inlägg
       if item 0 content = "new-post" [
+
+        ; Hämtar post-id från meddelandet
         set currentPostId item 1 content
 
         let wantedPostId currentPostId
+
+        ; Söker upp posten i posts-breed
         set currentPost one-of posts with [post-id = wantedPostId]
 
+        ; Om posten hittas → gå till decide-state
         ifelse currentPost != nobody [
           set state "decide"
         ] [
+          ; Annars ignoreras posten
           set state "ignore"
         ]
       ]
@@ -102,36 +152,44 @@ to check-messages
   ]
 end
 
+; Bestämmer om botten ska dela eller ignorera posten.
 to decide-share
   set color cyan
   set label "DECIDE"
 
+  ; Om posten inte finns → ignorera
   if currentPost = nobody [
     set state "ignore"
     stop
   ]
 
+  ; Ignorera borttagna posts
   if [post-removed?] of currentPost [
     set state "ignore"
     stop
   ]
 
+  ; Förhindrar dubbel-delning av samma post
   if member? currentPostId sharedPostIds [
     set state "ignore"
     stop
   ]
 
+  ; Botten får inte dela under cooldown
   if shareCooldown > 0 [
     set state "ignore"
     stop
   ]
 
+  ; Grundsannolikhet för delning
   let prob share-probability
 
+  ; Extremare posts ger försiktigare beteende
   if [post-extremity] of currentPost > riskTolerance [
     set prob cautious-share-probability
   ]
 
+  ; Slumpmässigt beslut om delning
   ifelse random 100 < prob [
     set willShare? true
     set state "share"
@@ -141,15 +199,20 @@ to decide-share
   ]
 end
 
+; Delar posten och uppdaterar statistik.
 to do-share
   set color green
   set label "SHARE"
 
   if currentPost != nobody [
+
+    ; Uppdaterar postens antal shares
     ask currentPost [
       if not post-removed? [
+
         set post-shares post-shares + 1
 
+        ; Uppdaterar label beroende på viral-status
         ifelse post-viral? [
           set label (word "P" post-id " S" post-shares " L" post-likes " VIRAL")
         ] [
@@ -158,23 +221,28 @@ to do-share
       ]
     ]
 
+    ; Sparar posten i minnet för att undvika dubbel-share
     set sharedPostIds lput currentPostId sharedPostIds
 
-    ; Bot statistics used by the shared model and agency.
+    ; Statistik till modellen och agency-agenten
     set total-posts-shared total-posts-shared + 1
     set totalShares totalShares + 1
     set post-frequency post-frequency + 1
 
+    ; Aktiverar cooldown
     set shareCooldown 10
   ]
 
+  ; Återställer botten till start-state
   reset-bot
 end
 
+; Ignorerar posten och sparar den i minnet.
 to do-ignore
   set color gray
   set label "IGNORE"
 
+  ; Sparar ignorerade posts
   if currentPostId != -1 and not member? currentPostId ignoredPostIds [
     set ignoredPostIds lput currentPostId ignoredPostIds
   ]
@@ -182,10 +250,13 @@ to do-ignore
   reset-bot
 end
 
+; Återställer temporära variabler efter en handling.
 to reset-bot
   set currentMessage nobody
   set currentPost nobody
   set currentPostId -1
   set willShare? false
+
+  ; Återgår till första state i FSM
   set state "check"
 end
