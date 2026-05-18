@@ -1,0 +1,81 @@
+;; --- AGENCY PROACTIVE: 
+
+to update-agency-proactive
+  ;; (FSM) logik
+  if proState_agency = "Monitoring"     [ agency-monitoring ]
+  if proState_agency = "Investigating"  [ agency-investigating ]
+  if proState_agency = "Deciding"       [ agency-deciding ]
+  if proState_agency = "Reporting"      [ agency-reporting ]
+end
+
+to agency-monitoring
+  ;; Hitta bots som lever
+  let potential-suspects agentBs with [size > 0]
+  
+  if any? potential-suspects [
+    ;; Vi letar efter en bot som uppfyller BÅDA kraven (AND-logik)
+    let suspect one-of potential-suspects with [
+      likes-received >= 50 and shares-received >= 50
+    ]
+    
+    if suspect != nobody [
+      set investigation-target suspect
+      set investigation-ticks 0
+      set proState_agency "Investigating"
+      output-print (word "PROACTIVE: Target found with " [likes-received] of suspect " likes and " [shares-received] of suspect " shares.")
+    ]
+  ]
+end
+
+to agency-investigating
+  if investigation-target = nobody [ set proState_agency "Monitoring" stop ]
+  
+  ;; Vänta 3 ticks sen utredning"
+  set investigation-ticks investigation-ticks + 1
+  if investigation-ticks >= 3 [ 
+    set proState_agency "Deciding" 
+  ]
+end
+
+to agency-deciding
+  if investigation-target = nobody [ set proState_agency "Monitoring" stop ]
+  
+  ;; Bestäm straff: flagga eller ba
+  ifelse [breed] of investigation-target = agentAs [
+    set delegated-action "publish-correction"
+  ] [
+    set delegated-action "full-ban"
+  ]
+  
+  set delegated-target investigation-target
+  set has-delegation? true
+  set proState_agency "Reporting"
+end
+
+to agency-reporting
+  ;; Här skickas beslutet (Delegation)
+  if has-delegation? [
+    execute-delegation
+  ]
+  set investigation-target nobody
+  set proState_agency "Monitoring"
+end
+
+to execute-delegation
+  if delegated-target != nobody [
+    ifelse delegated-action = "full-ban" [
+      ;; Dubbelkolla 
+      if [breed] of delegated-target != agentAs [
+        ask delegated-target [ set color black set size 0 ]
+        set bans-issued bans-issued + 1
+      ]
+    ] [
+      ;; Gul 
+      ask delegated-target [ set color yellow set label "WATCHED" ]
+      
+      set corrections-published corrections-published + 1
+    ]
+  ]
+  set delegated-action "none"
+  set has-delegation?  false
+end
