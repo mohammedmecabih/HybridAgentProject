@@ -1,7 +1,7 @@
-;; --- AGENCY PROACTIVE: 
+;Agency Proactive
 
 to update-agency-proactive
-  ;; (FSM) logik
+  ;; State Machine (FSM) logik
   if proState_agency = "Monitoring"     [ agency-monitoring ]
   if proState_agency = "Investigating"  [ agency-investigating ]
   if proState_agency = "Deciding"       [ agency-deciding ]
@@ -13,6 +13,7 @@ to agency-monitoring
   let potential-suspects agentBs with [size > 0]
   
   if any? potential-suspects [
+    ;; Letar efter en bot som uppfyller kraven
     let suspect one-of potential-suspects with [
       likes-received >= 50 and shares-received >= 50
     ]
@@ -23,15 +24,9 @@ to agency-monitoring
       set proState_agency "Investigating"
       output-print (word "PROACTIVE " who ": Hittade bot " [who] of suspect ". Inleder utredning.")
       
-      ;; === KOMMUNIKATION: SKICKA MEDDELANDE ===
-      ;; 1. Skapa ett meddelande med performativen "INFORM"
+      ;; === KOMMUNIKATION: SKICKA BROADCAST ===
       let msg create-message "INFORM"
-      
-      ;; 2. Lägg till innehåll (t.ex. "investigating:5" om boten har ID 5)
       set msg add-content (word "investigating:" [who] of suspect) msg
-      
-      ;; 3. Skicka till ALLA andra i breedet 'agencies'. 
-      ;; 'who' skickas med i slutet så att agenten inte skickar till sig själv.
       broadcast-to agencies msg who
     ]
   ]
@@ -40,7 +35,7 @@ end
 to agency-investigating
   if investigation-target = nobody [ set proState_agency "Monitoring" stop ]
   
-  ;; Vänta 3 ticks sen utredning"
+  ;; Vänta 3 ticks under utredning
   set investigation-ticks investigation-ticks + 1
   if investigation-ticks >= 3 [ 
     set proState_agency "Deciding" 
@@ -50,7 +45,7 @@ end
 to agency-deciding
   if investigation-target = nobody [ set proState_agency "Monitoring" stop ]
   
-  ;; Bestäm straff: flagga eller ban
+  ;; Bestäm straff baserat på breed
   ifelse [breed] of investigation-target = agentAs [
     set delegated-action "publish-correction"
   ] [
@@ -63,7 +58,7 @@ to agency-deciding
 end
 
 to agency-reporting
-  ;; (Delegation)
+  ;; Kör uppdraget (Delegation)
   if has-delegation? [
     execute-delegation
   ]
@@ -74,15 +69,14 @@ end
 to execute-delegation
   if delegated-target != nobody [
     ifelse delegated-action = "full-ban" [
-      ;; Dubbelkolla 
+      ;; Dubbelkolla att det inte är en agentA innan ban
       if [breed] of delegated-target != agentAs [
         ask delegated-target [ set color black set size 0 ]
         set bans-issued bans-issued + 1
       ]
     ] [
-      ;; Gul 
+      ;; Gul flagg och WATCHED-etikett
       ask delegated-target [ set color yellow set label "WATCHED" ]
-      
       set corrections-published corrections-published + 1
     ]
   ]

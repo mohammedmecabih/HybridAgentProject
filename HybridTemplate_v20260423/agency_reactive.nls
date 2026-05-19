@@ -1,12 +1,14 @@
+; Agency Reactive
+
 to update-agency-reactive
   ;; === KOMMUNIKATION: LÄS BREVLÅDAN FÖRST ===
   handle-agency-messages
 
-  ;; FIX: Istället för "color = yellow" kollar vi nu direkt på variablerna:
-  ;; 1. Inlägget ska inte redan vara borttaget
-  ;; 2. Inlägget ska ha nått tröskelvärdet för att vara viralt (både shares och likes)
-  ;; 3. Inläggets extremism ska ligga inom det måttliga/gula intervallet (> 3 och <= 6)
-  ;; 4. Myndigheten ska inte redan ha godkänt/inspekterat inlägget tidigare
+  ;; Myndigheten scannar efter inlägg baserat på era faktiska modellvariabler:
+  ;; 1. Ska inte redan vara borttaget (post-removed? = false)
+  ;; 2. Ska ha nått tröskelvärdet för att vara viralt (både shares och likes)
+  ;; 3. Ska ligga inom det måttliga/gula extremism-intervallet (> 3 och <= 6)
+  ;; 4. Ska inte redan ha godkänts/inspekterats av denna myndighet tidigare
   
   let targets posts with [
     not post-removed? and 
@@ -27,25 +29,21 @@ to update-agency-reactive
   ]
 end
 
-
-;; === PROCEDUR FÖR ATT HANTERA MEDDELANDEN ===
+;; === PROCEDUR FÖR ATT HANTERA INKOMMANDE MEDDELANDEN ===
 to handle-agency-messages
-  ;; Hämta det första meddelandet i kön (detta plockar ut och tar bort det från kön samtidigt)
+  ;; Hämta det första meddelandet i kön
   let incoming-msg get-message
   
   ;; Loopa igenom alla meddelanden som ligger i kön just nu
   while [incoming-msg != "no_message"] [
     
-    ;; Hämta ut innehållet (t.ex. "investigating:5")
     let content get-content incoming-msg
     let msg-sender get-sender incoming-msg
     
-    ;; Tolka meddelandet: Om en kollega utreder en bot
+    ;; Samordning: Om en kollega utreder en bot, avbryt om vi gör samma sak
     if member? "investigating:" content [
-      ;; Plocka ut botens ID (ta bort texten och gör om siffran från string till number)
       let busy-bot-id read-from-string remove "investigating:" content
       
-      ;; Om VI har den här boten som mål just nu, avbryt så vi inte gör dubbelt arbete!
       if investigation-target != nobody and [who] of investigation-target = busy-bot-id [
         if proState_agency = "Monitoring" or proState_agency = "Investigating" [
           set investigation-target nobody
@@ -55,13 +53,12 @@ to handle-agency-messages
       ]
     ]
     
-    ;; Gå vidare till nästa meddelande i kön (om det finns något)
+    ;; Gå till nästa meddelande i kön
     set incoming-msg get-message 
   ]
 end
 
-
-;; === PROCEDUR FÖR ATT AGERA PÅ INLÄGG ===
+;; === PROCEDUR FÖR ATT FATTA BESLUT OM INLÄGG ===
 to handle-target-action [target]
   ;; Slumpa en siffra mellan 1 och 100
   let slump-tal (random 100) + 1
@@ -71,10 +68,10 @@ to handle-target-action [target]
     output-print (word "AGENCY: Siffra " slump-tal " - Raderar inlägg (Extremity: " [post-extremity] of target ") och går vidare.")
     ask target [ die ] 
   ] [
-    ;; --- FALL B: SLÄPP (Här slipper vi gruppens "Removed"-text) ---
+    ;; --- FALL B: SLÄPP (Här slipper vi gruppens globala "Removed"-text) ---
     output-print (word "AGENCY: Siffra " slump-tal " - Släpper inlägg och letar nästa.")
     
-    ;; Vi sparar bara inlägget i vårt eget interna minne
+    ;; Spara inlägget i myndighetens interna minne
     set inspected-posts lput target inspected-posts
   ]
 end
