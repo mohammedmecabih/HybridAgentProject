@@ -1,16 +1,14 @@
-;Agency Proactive
+; Agency Proactive
 
 ;; Proactive agency FSM.
 ;; Rules implemented here:
 ;; - Total bots can be changed from the NetLogo slider/setup.
 ;; - Agency may ban only 10% of the bots created at setup.
-;; - Because we may only edit agency files, original bot count is reconstructed as:
-;;   count agentBs + total-banned-bots
-;; - Example: 50 created bots -> max 5 bans total.
-;; - Example: 100 created bots -> max 10 bans total.
-;; - Bots are suspicious only if they created at least one post with post-extremity 3-6.
+;; - Original bot count is reconstructed as: count agentBs + total-banned-bots.
+;; - Bots are suspicious only if they created at least one viral post with post-extremity 3-6.
 ;; - Banning happens gradually while the simulator runs.
 ;; - Uses variables only, not display color.
+;; - Uses FIPA-like communication methods already used in the project.
 
 to update-agency-proactive
   ;; Keep coordination memory clean: remove ids for agents that no longer exist.
@@ -27,7 +25,7 @@ to agency-monitoring
   ;; Do not select new bot targets if the 10% setup-based limit is already reached.
   if remaining-ban-slots <= 0 [ stop ]
 
-  ;; Suspicious bots are bots that created at least one post with extremity 3-6.
+  ;; Suspicious bots are bots that created at least one viral post with extremity 3-6.
   ;; No color check here.
   let potential-suspects agentBs with [
     not hidden? and
@@ -35,16 +33,24 @@ to agency-monitoring
     not member? who [busy-bot-ids] of myself and
     any? posts with [
       post-origin = myself and
+      not post-removed? and
+      post-viral? and
+      post-shares >= viral-share-threshold and
+      post-likes >= viral-like-threshold and
       post-extremity >= 3 and
       post-extremity <= 6
     ]
   ]
 
   if any? potential-suspects [
-    ;; Prefer the bot with most relevant posts in the 3-6 interval.
+    ;; Prefer the bot with most relevant viral posts in the 3-6 interval.
     let suspect max-one-of potential-suspects [
       count posts with [
         post-origin = myself and
+        not post-removed? and
+        post-viral? and
+        post-shares >= viral-share-threshold and
+        post-likes >= viral-like-threshold and
         post-extremity >= 3 and
         post-extremity <= 6
       ]
@@ -54,30 +60,53 @@ to agency-monitoring
     set investigation-ticks 0
     set proState_agency "Investigating"
 
-    ;; Mark locally so other agencies do not select the same bot at the same time.
+    ;; Mark locally so this agency does not select the same bot again while investigating.
     if not member? [who] of suspect busy-bot-ids [
       set busy-bot-ids lput [who] of suspect busy-bot-ids
     ]
 
-    output-print (word "PROACTIVE " who ": Investigating suspicious bot " [who] of suspect " with posts extremity 3-6. Ban slots left: " remaining-ban-slots " / max " max-bots-to-ban)
+    log-agency (word "AGENCY " who " | MONITORING: Found suspicious bot "
+      [who] of suspect ". Reason = viral post(s) with extremity 3-6.")
+    log-agency (word "AGENCY " who " | MONITORING: Ban slots left = "
+      remaining-ban-slots " / " max-bots-to-ban ".")
 
-    ;; Coordination between agencies.
+    ;; FIPA style: inform other agencies that this bot is being investigated.
     let msg create-message "inform"
     set msg add-content (list "investigating" [who] of suspect) msg
     broadcast-to agencies msg who
+
+    log-agency (word "AGENCY " who
+      " | FIPA SENT inform to agencies: investigating bot " [who] of suspect ".")
+
+    ;; FIPA style: inform humans that agency started an investigation.
+    if any? humans [
+      let human-msg create-message "inform"
+      set human-msg add-content (list "agency-investigating-bot" [who] of suspect) human-msg
+      broadcast-to humans human-msg who
+
+      log-agency (word "AGENCY " who
+        " | FIPA SENT inform to humans: investigating bot " [who] of suspect ".")
+    ]
   ]
 end
 
 
 to agency-investigating
   if not is-agent? investigation-target [
+    log-agency (word "AGENCY " who " | INVESTIGATING: target no longer exists. Resetting.")
     reset-agency-investigation
     stop
   ]
 
   ;; Do not ban immediately. Let the simulator run while agency investigates.
   set investigation-ticks investigation-ticks + 1
+
+  log-agency (word "AGENCY " who " | INVESTIGATING: bot "
+    [who] of investigation-target " tick " investigation-ticks " / 5.")
+
   if investigation-ticks >= 5 [
+    log-agency (word "AGENCY " who " | INVESTIGATING: finished investigation of bot "
+      [who] of investigation-target ". Moving to DECIDING.")
     set proState_agency "Deciding"
   ]
 end
@@ -85,14 +114,22 @@ end
 
 to agency-deciding
   if not is-agent? investigation-target [
+    log-agency (word "AGENCY " who " | DECIDING: target no longer exists. Resetting.")
     reset-agency-investigation
     stop
   ]
 
+  log-agency (word "AGENCY " who " | DECIDING: evaluating bot "
+    [who] of investigation-target ".")
+
   ifelse remaining-ban-slots > 0 and is-suspicious-bot? investigation-target [
     set delegated-action "ban-one-suspicious-bot"
+    log-agency (word "AGENCY " who " | DECIDING: decision = BAN bot "
+      [who] of investigation-target ".")
   ] [
     set delegated-action "warn"
+    log-agency (word "AGENCY " who " | DECIDING: decision = WATCH bot "
+      [who] of investigation-target ".")
   ]
 
   set delegated-target investigation-target
@@ -102,10 +139,13 @@ end
 
 
 to agency-reporting
+  log-agency (word "AGENCY " who " | REPORTING: executing action = " delegated-action ".")
+
   if has-delegation? [
     execute-delegation
   ]
 
+  log-agency (word "AGENCY " who " | REPORTING: completed. Returning to MONITORING.")
   reset-agency-investigation
 end
 
@@ -118,19 +158,24 @@ to execute-delegation
 
   if delegated-action = "ban-one-suspicious-bot" [
     if remaining-ban-slots <= 0 [
-      output-print (word "AGENCY " who ": Ban limit reached. Total banned: " total-banned-bots " / " max-bots-to-ban)
+      log-agency (word "AGENCY " who ": Ban limit reached. Total banned: "
+        total-banned-bots " / " max-bots-to-ban)
       set delegated-action "none"
       set has-delegation? false
       stop
     ]
 
     ;; Rebuild eligible targets at execution time so stale targets are not banned.
-    ;; The bot must still be alive, not banned, and have at least one post with extremity 3-6.
+    ;; The bot must still be alive, not banned, and have at least one viral post with extremity 3-6.
     let targets agentBs with [
       not hidden? and
       not is-banned? and
       any? posts with [
         post-origin = myself and
+        not post-removed? and
+        post-viral? and
+        post-shares >= viral-share-threshold and
+        post-likes >= viral-like-threshold and
         post-extremity >= 3 and
         post-extremity <= 6
       ]
@@ -148,7 +193,34 @@ to execute-delegation
         set chosen one-of targets
       ]
 
-      output-print (word "AGENCY " who ": Banning 1 suspicious bot " [who] of chosen ". Total banned after this: " (total-banned-bots + 1) " / " max-bots-to-ban)
+      let chosen-id [who] of chosen
+
+      ;; Remove only this bot's relevant viral posts before killing the bot.
+      let relevant-posts posts with [
+        post-origin = chosen and
+        not post-removed? and
+        post-viral? and
+        post-shares >= viral-share-threshold and
+        post-likes >= viral-like-threshold and
+        post-extremity >= 3 and
+        post-extremity <= 6
+      ]
+
+      let removed-post-ids sort [post-id] of relevant-posts
+
+      log-agency (word "AGENCY " who " | BAN: banning bot " chosen-id
+        ". Removed relevant posts = " removed-post-ids
+        ". Total banned after this = " (total-banned-bots + 1) " / " max-bots-to-ban ".")
+
+      ask relevant-posts [
+        set post-removed? true
+        set post-viral? false
+        set post-shares 0
+        set post-likes 0
+        set label "REMOVED"
+        set size 0
+        hide-turtle
+      ]
 
       ask chosen [
         set is-banned? true
@@ -158,16 +230,50 @@ to execute-delegation
       ]
 
       set bans-issued bans-issued + 1
-      set busy-bot-ids remove [who] of chosen busy-bot-ids
+      set busy-bot-ids remove chosen-id busy-bot-ids
+
+      ;; FIPA style: inform humans about the ban result.
+      if any? humans [
+        let msg create-message "inform"
+        set msg add-content (list "bot-banned" chosen-id removed-post-ids) msg
+        broadcast-to humans msg who
+
+        log-agency (word "AGENCY " who
+          " | FIPA SENT inform to humans: bot " chosen-id
+          " was banned. Removed posts = " removed-post-ids ".")
+      ]
+
+      ;; FIPA style: inform other agencies about the ban result.
+      if any? other agencies [
+        let agency-msg create-message "inform"
+        set agency-msg add-content (list "bot-banned" chosen-id removed-post-ids) agency-msg
+        broadcast-to agencies agency-msg who
+
+        log-agency (word "AGENCY " who
+          " | FIPA SENT inform to agencies: bot " chosen-id " was banned.")
+      ]
     ]
   ]
 
   if delegated-action = "warn" [
     if is-agent? delegated-target [
+      let watched-id [who] of delegated-target
+
       ask delegated-target [
         set label "WATCHED"
       ]
+
       set corrections-published corrections-published + 1
+
+      ;; FIPA style: inform humans about the watch decision.
+      if any? humans [
+        let msg create-message "inform"
+        set msg add-content (list "bot-watched" watched-id) msg
+        broadcast-to humans msg who
+
+        log-agency (word "AGENCY " who
+          " | FIPA SENT inform to humans: bot " watched-id " was watched, not banned.")
+      ]
     ]
   ]
 
@@ -198,6 +304,10 @@ to-report is-suspicious-bot? [candidate]
 
   report any? posts with [
     post-origin = candidate and
+    not post-removed? and
+    post-viral? and
+    post-shares >= viral-share-threshold and
+    post-likes >= viral-like-threshold and
     post-extremity >= 3 and
     post-extremity <= 6
   ]
@@ -211,9 +321,8 @@ end
 
 
 to-report original-bot-count
-  ;; We cannot edit setup/globals, so reconstruct the setup count:
+  ;; Reconstruct the setup count:
   ;; alive bots + bots already banned by agencies.
-  ;; Example: 45 alive + 5 banned = 50 created at setup.
   report count agentBs + total-banned-bots
 end
 
