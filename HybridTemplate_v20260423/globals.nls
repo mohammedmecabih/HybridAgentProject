@@ -70,6 +70,7 @@ debugMode
 
 
 agencies-own [
+  inspected-posts 
   proState_agency
   investigation-target
   investigation-ticks
