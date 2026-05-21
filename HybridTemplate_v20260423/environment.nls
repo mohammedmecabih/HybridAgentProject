@@ -1,48 +1,116 @@
 ; ********************************************************************************************************************************************************
-;***          ENVIRONMENT.NLS  (contains all the code for the environment)                                                                                    ****
+;***          ENVIRONMENT.NLS  (contains all the code for the environment)                                                                              ****
 ;*********************************************************************************************************************************************************
 ;*********************************************************************************************************************************************************
 ; LOGBOOK OF UPDATES IN THIS FILE
 ; --Date--- |-----Description--------------------------------------------------------------------------------|---Person(s)-------------------------------
-; 20250423    Initial template of a dummy-breed to be adapted by the project group                               Gion
-; 20260428  v1.1  Simplified environment (removed sanctuary and houses) (Hamed)
-;
+; 20250423    Initial template of a dummy-breed to be adapted by the project group                             Gion
+; 20260428    Simplified environment (removed sanctuary and houses)                                           Hamed
+; 20260521    Added visual social-media zones: source, feed, viral                                            Ali, Abdulmajid
 ;
 ;********************end logbook ************************************************************************************************************************
+
 ;*********************************************************************************************************************************************************
 ; VARIABLES OF PATCHES
+
 patches-own [
   neighborhood        ; surrounding patches within the vision radius
   region              ; used for identification of different regions
 ]
+
 ;****************** end variables of patches **************************************************************************************************************
+
 ;***********************************************************************************************************************************************************
 ; SETUP ENVIRONMENT
-;---- General setup of the model and the regions
-;- use Model Settings under 'Interface'->'Settings...'
-;
-; World
-; location of origin: Corner
-; Bottom Left
-; min-pxcor: 0 (minimum x coordinate for patches)
-; max-pxcor: 66 (maximum x coordinate for patches)
-; min-pycor: 0 (minimum y coordinate for patches)
-; max-pycor: 33 (maximum y coordinate for patches)
-; X world wraps horizontally
-; X world wraps vertically
-; View
-; Patch size: 22.12
-; Font size: 10
-; Frame rate: 30
-;
-; X show tick counter
-; Tick counter label: ticks
-;-------------------------------------------------
+
 to setup-environment
   ask patches [
-    set pcolor black
-    set region "empty"
-    set plabel ""
     set neighborhood patches in-radius 2
+    set region "feed-zone"
+    set pcolor 3
+    set plabel ""
+  ]
+
+  setup-source-zone
+  setup-feed-zone
+  setup-viral-zone
+  setup-zone-labels
+end
+
+;***********************************************************************************************************************************************************
+; ENVIRONMENT REGIONS
+
+to setup-source-zone
+  ask patches with [pxcor <= min-pxcor + 8] [
+    set region "source-zone"
+    set pcolor 104
   ]
 end
+
+to setup-feed-zone
+  ask patches with [
+    pxcor > min-pxcor + 8 and
+    pxcor < max-pxcor - 10
+  ] [
+    set region "feed-zone"
+    set pcolor 3
+  ]
+end
+
+to setup-viral-zone
+  ask patches with [
+    pxcor >= max-pxcor - 10
+  ] [
+    set region "viral-zone"
+    set pcolor 44
+  ]
+end
+
+to setup-zone-labels
+  ask one-of patches with [
+    region = "source-zone" and
+    pxcor = min-pxcor + 4 and
+    pycor = max-pycor - 2
+  ] [
+    set plabel "SOURCE"
+  ]
+
+  ask one-of patches with [
+    region = "feed-zone" and
+    pxcor = max-pxcor / 2 and
+    pycor = min-pycor + 2
+  ] [
+    set plabel "FEED"
+  ]
+
+  ask one-of patches with [
+    region = "viral-zone" and
+    pxcor = max-pxcor - 5 and
+    pycor = max-pycor - 4
+  ] [
+    set plabel "VIRAL"
+  ]
+end
+
+;***********************************************************************************************************************************************************
+; HELP REPORTERS
+
+to-report random-feed-patch
+  report one-of patches with [region = "feed-zone"]
+end
+
+to-report random-source-patch
+  report one-of patches with [region = "source-zone"]
+end
+
+to-report random-viral-patch
+  report one-of patches with [region = "viral-zone"]
+end
+
+; Kept for compatibility with bot code.
+; Since there is no removed zone anymore, removed posts stay in the feed.
+to-report random-moderation-patch
+  report one-of patches with [region = "feed-zone"]
+end
+
+;******************* end environment **********************************************************************************************************************
