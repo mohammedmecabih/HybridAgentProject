@@ -1,85 +1,231 @@
 ;Agency Proactive
 
+;; Proactive agency FSM.
+;; Rules implemented here:
+;; - Total bots can be changed from the NetLogo slider/setup.
+;; - Agency may ban only 10% of the bots created at setup.
+;; - Because we may only edit agency files, original bot count is reconstructed as:
+;;   count agentBs + total-banned-bots
+;; - Example: 50 created bots -> max 5 bans total.
+;; - Example: 100 created bots -> max 10 bans total.
+;; - Bots are suspicious only if they created at least one post with post-extremity 3-6.
+;; - Banning happens gradually while the simulator runs.
+;; - Uses variables only, not display color.
+
 to update-agency-proactive
-  ;; State Machine (FSM) logik
-  if proState_agency = "Monitoring"     [ agency-monitoring ]
-  if proState_agency = "Investigating"  [ agency-investigating ]
-  if proState_agency = "Deciding"       [ agency-deciding ]
-  if proState_agency = "Reporting"      [ agency-reporting ]
+  ;; Keep coordination memory clean: remove ids for agents that no longer exist.
+  set busy-bot-ids filter [id -> is-number? id and turtle id != nobody] busy-bot-ids
+
+  ifelse proState_agency = "Monitoring" [ agency-monitoring ]
+  [ ifelse proState_agency = "Investigating" [ agency-investigating ]
+    [ ifelse proState_agency = "Deciding" [ agency-deciding ]
+      [ if proState_agency = "Reporting" [ agency-reporting ] ]]]
 end
+
 
 to agency-monitoring
-  ;; Hitta bots som lever
-  let potential-suspects agentBs with [size > 0]
-  
-  if any? potential-suspects [
-    ;; Letar efter en bot som uppfyller kraven
-    let suspect one-of potential-suspects with [
-      likes-received >= 50 and shares-received >= 50
-    ]
-    
-    if suspect != nobody [
-      set investigation-target suspect
-      set investigation-ticks 0
-      set proState_agency "Investigating"
-      output-print (word "PROACTIVE " who ": Hittade bot " [who] of suspect ". Inleder utredning.")
-      
-      ;; === KOMMUNIKATION: SKICKA BROADCAST ===
-      let msg create-message "INFORM"
-      set msg add-content (word "investigating:" [who] of suspect) msg
-      broadcast-to agencies msg who
+  ;; Do not select new bot targets if the 10% setup-based limit is already reached.
+  if remaining-ban-slots <= 0 [ stop ]
+
+  ;; Suspicious bots are bots that created at least one post with extremity 3-6.
+  ;; No color check here.
+  let potential-suspects agentBs with [
+    not hidden? and
+    not is-banned? and
+    not member? who [busy-bot-ids] of myself and
+    any? posts with [
+      post-origin = myself and
+      post-extremity >= 3 and
+      post-extremity <= 6
     ]
   ]
+
+  if any? potential-suspects [
+    ;; Prefer the bot with most relevant posts in the 3-6 interval.
+    let suspect max-one-of potential-suspects [
+      count posts with [
+        post-origin = myself and
+        post-extremity >= 3 and
+        post-extremity <= 6
+      ]
+    ]
+
+    set investigation-target suspect
+    set investigation-ticks 0
+    set proState_agency "Investigating"
+
+    ;; Mark locally so other agencies do not select the same bot at the same time.
+    if not member? [who] of suspect busy-bot-ids [
+      set busy-bot-ids lput [who] of suspect busy-bot-ids
+    ]
+
+    output-print (word "PROACTIVE " who ": Investigating suspicious bot " [who] of suspect " with posts extremity 3-6. Ban slots left: " remaining-ban-slots " / max " max-bots-to-ban)
+
+    ;; Coordination between agencies.
+    let msg create-message "inform"
+    set msg add-content (list "investigating" [who] of suspect) msg
+    broadcast-to agencies msg who
+  ]
 end
+
 
 to agency-investigating
-  if investigation-target = nobody [ set proState_agency "Monitoring" stop ]
-  
-  ;; Vänta 3 ticks under utredning
+  if not is-agent? investigation-target [
+    reset-agency-investigation
+    stop
+  ]
+
+  ;; Do not ban immediately. Let the simulator run while agency investigates.
   set investigation-ticks investigation-ticks + 1
-  if investigation-ticks >= 3 [ 
-    set proState_agency "Deciding" 
+  if investigation-ticks >= 5 [
+    set proState_agency "Deciding"
   ]
 end
 
+
 to agency-deciding
-  if investigation-target = nobody [ set proState_agency "Monitoring" stop ]
-  
-  ;; Bestäm straff baserat på breed
-  ifelse [breed] of investigation-target = agentAs [
-    set delegated-action "publish-correction"
-  ] [
-    set delegated-action "full-ban"
+  if not is-agent? investigation-target [
+    reset-agency-investigation
+    stop
   ]
-  
+
+  ifelse remaining-ban-slots > 0 and is-suspicious-bot? investigation-target [
+    set delegated-action "ban-one-suspicious-bot"
+  ] [
+    set delegated-action "warn"
+  ]
+
   set delegated-target investigation-target
   set has-delegation? true
   set proState_agency "Reporting"
 end
 
+
 to agency-reporting
-  ;; Kör uppdraget (Delegation)
   if has-delegation? [
     execute-delegation
   ]
-  set investigation-target nobody
-  set proState_agency "Monitoring"
+
+  reset-agency-investigation
 end
 
+
 to execute-delegation
-  if delegated-target != nobody [
-    ifelse delegated-action = "full-ban" [
-      ;; Dubbelkolla att det inte är en agentA innan ban
-      if [breed] of delegated-target != agentAs [
-        ask delegated-target [ set color black set size 0 ]
-        set bans-issued bans-issued + 1
+  if delegated-action = "none" [
+    set has-delegation? false
+    stop
+  ]
+
+  if delegated-action = "ban-one-suspicious-bot" [
+    if remaining-ban-slots <= 0 [
+      output-print (word "AGENCY " who ": Ban limit reached. Total banned: " total-banned-bots " / " max-bots-to-ban)
+      set delegated-action "none"
+      set has-delegation? false
+      stop
+    ]
+
+    ;; Rebuild eligible targets at execution time so stale targets are not banned.
+    ;; The bot must still be alive, not banned, and have at least one post with extremity 3-6.
+    let targets agentBs with [
+      not hidden? and
+      not is-banned? and
+      any? posts with [
+        post-origin = myself and
+        post-extremity >= 3 and
+        post-extremity <= 6
       ]
-    ] [
-      ;; Gul flagg och WATCHED-etikett
-      ask delegated-target [ set color yellow set label "WATCHED" ]
+    ]
+
+    if any? targets [
+      let chosen nobody
+
+      ;; Prefer the bot already investigated if it is still valid.
+      if is-suspicious-bot? delegated-target [
+        set chosen delegated-target
+      ]
+
+      if chosen = nobody [
+        set chosen one-of targets
+      ]
+
+      output-print (word "AGENCY " who ": Banning 1 suspicious bot " [who] of chosen ". Total banned after this: " (total-banned-bots + 1) " / " max-bots-to-ban)
+
+      ask chosen [
+        set is-banned? true
+        set label "BANNED"
+        hide-turtle
+        die
+      ]
+
+      set bans-issued bans-issued + 1
+      set busy-bot-ids remove [who] of chosen busy-bot-ids
+    ]
+  ]
+
+  if delegated-action = "warn" [
+    if is-agent? delegated-target [
+      ask delegated-target [
+        set label "WATCHED"
+      ]
       set corrections-published corrections-published + 1
     ]
   ]
+
   set delegated-action "none"
-  set has-delegation?  false
+  set has-delegation? false
+end
+
+
+to reset-agency-investigation
+  if is-agent? investigation-target [
+    set busy-bot-ids remove [who] of investigation-target busy-bot-ids
+  ]
+
+  set investigation-target nobody
+  set investigation-ticks 0
+  set delegated-target nobody
+  set delegated-action "none"
+  set has-delegation? false
+  set proState_agency "Monitoring"
+end
+
+
+to-report is-suspicious-bot? [candidate]
+  if not is-agent? candidate [ report false ]
+  if [breed] of candidate != agentBs [ report false ]
+  if [hidden?] of candidate [ report false ]
+  if [is-banned?] of candidate [ report false ]
+
+  report any? posts with [
+    post-origin = candidate and
+    post-extremity >= 3 and
+    post-extremity <= 6
+  ]
+end
+
+
+to-report total-banned-bots
+  ;; bans-issued is agency-owned, so sum over all agencies.
+  report sum [bans-issued] of agencies
+end
+
+
+to-report original-bot-count
+  ;; We cannot edit setup/globals, so reconstruct the setup count:
+  ;; alive bots + bots already banned by agencies.
+  ;; Example: 45 alive + 5 banned = 50 created at setup.
+  report count agentBs + total-banned-bots
+end
+
+
+to-report max-bots-to-ban
+  if original-bot-count <= 0 [ report 0 ]
+  report ceiling (original-bot-count * 0.10)
+end
+
+
+to-report remaining-ban-slots
+  let slots max-bots-to-ban - total-banned-bots
+  if slots < 0 [ report 0 ]
+  report slots
 end

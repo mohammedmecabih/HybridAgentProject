@@ -1,77 +1,177 @@
 ; Agency Reactive
 
+;; Reactive agency layer:
+;; 1. Handles incoming messages once per agency tick.
+;; 2. Moves the house to posts with post-extremity between 3 and 6.
+;; 3. Inspects each post-agent exactly once, not each bot.
+;; 4. If the same bot creates a new 3-6 post later, that new post is inspected too.
+;; 5. Removes 70% of inspected 3-6 posts and releases 30%.
+;; 5. Uses project variables only, never display color.
+
 to update-agency-reactive
-  ;; === KOMMUNIKATION: LÄS BREVLÅDAN FÖRST ===
+  ;; Communication must be handled before reactive post scanning.
   handle-agency-messages
 
-  ;; Myndigheten scannar efter inlägg baserat på era faktiska modellvariabler:
-  ;; 1. Ska inte redan vara borttaget (post-removed? = false)
-  ;; 2. Ska ha nått tröskelvärdet för att vara viralt (både shares och likes)
-  ;; 3. Ska ligga inom det måttliga/gula extremism-intervallet (> 3 och <= 6)
-  ;; 4. Ska inte redan ha godkänts/inspekterats av denna myndighet tidigare
-  
+  ;; Keep only existing post agents in memory.
+  ;; Released posts stay here so they are not inspected twice.
+  set inspected-posts filter [p -> is-agent? p] inspected-posts
+
+  ;; Target only posts in the required extremity interval by variables.
+  ;; Do NOT use color. Color is only the visual result elsewhere in the model.
+  ;; IMPORTANT: inspected-posts stores post agents, not bot agents.
+  ;; Therefore a bot can have one old post inspected/released, then create a new post,
+  ;; and the new post will still be inspected because it is a different post agent.
   let targets posts with [
-    not post-removed? and 
-    post-shares >= viral-share-threshold and 
-    post-likes >= viral-like-threshold and 
-    post-extremity > 3 and 
-    post-extremity <= 6 and 
+    not post-removed? and
+    post-extremity >= 3 and
+    post-extremity <= 6 and
     not member? self [inspected-posts] of myself
   ]
-  
+
   if any? targets [
-    let closest-target min-one-of targets [distance myself]
-    face closest-target
-    fd 0.5
-    if distance closest-target < 1.5 [
-      handle-target-action closest-target
+    ;; Inspect the newest eligible post first.
+    ;; This makes new 3-6 posts from already-inspected bots get handled again,
+    ;; while the exact same old post is still never inspected twice.
+    let selected-target max-one-of targets [post-id]
+    face selected-target
+
+    ifelse distance selected-target > 1.5 [
+      ifelse can-move? 0.5 [ fd 0.5 ] [ rt 180 ]
+    ] [
+      ;; Inspect only when the house reaches the post.
+      inspect-extreme-post selected-target
     ]
+    stop
+  ]
+
+  ;; If there is no post target, still move while proactive agency investigates a bot.
+  if is-agent? investigation-target [
+    face investigation-target
+    ifelse can-move? 0.5 [ fd 0.5 ] [ rt 180 ]
+    stop
+  ]
+
+  ;; Fallback movement so the agency does not look frozen between targets.
+  agency-search-movement
+end
+
+
+to agency-search-movement
+  rt ((random 61) - 30)
+  ifelse can-move? 0.35 [
+    fd 0.35
+  ] [
+    rt 180
+    if can-move? 0.35 [ fd 0.35 ]
   ]
 end
 
-;; === PROCEDUR FÖR ATT HANTERA INKOMMANDE MEDDELANDEN ===
+
 to handle-agency-messages
-  ;; Hämta det första meddelandet i kön
   let incoming-msg get-message
-  
-  ;; Loopa igenom alla meddelanden som ligger i kön just nu
-  while [incoming-msg != "no_message"] [
-    
+  let safety-counter 0
+
+  while [incoming-msg != "no_message" and safety-counter < 20] [
+    set safety-counter safety-counter + 1
+
+    let performative get-performative incoming-msg
     let content get-content incoming-msg
     let msg-sender get-sender incoming-msg
-    
-    ;; Samordning: Om en kollega utreder en bot, avbryt om vi gör samma sak
-    if member? "investigating:" content [
-      let busy-bot-id read-from-string remove "investigating:" content
-      
-      if investigation-target != nobody and [who] of investigation-target = busy-bot-id [
-        if proState_agency = "Monitoring" or proState_agency = "Investigating" [
+
+    ;; Coordination between agencies: another agency has claimed a bot.
+    if is-list? content and length content >= 2 and item 0 content = "investigating" [
+      let busy-bot-id item 1 content
+
+      if is-number? busy-bot-id and turtle busy-bot-id != nobody [
+        if not member? busy-bot-id busy-bot-ids [
+          set busy-bot-ids lput busy-bot-id busy-bot-ids
+        ]
+      ]
+
+      ;; If this agency is working on the same bot, stop and let the first agency continue.
+      if is-agent? investigation-target and [who] of investigation-target = busy-bot-id [
+        if member? proState_agency ["Monitoring" "Investigating"] [
           set investigation-target nobody
+          set investigation-ticks 0
+          set delegated-target nobody
+          set delegated-action "none"
+          set has-delegation? false
           set proState_agency "Monitoring"
-          output-print (word "COORDINATION: Agency " who " avbryter utredning av bot " busy-bot-id " eftersom kollega " msg-sender " redan hanterar den.")
+          output-print (word "COORDINATION: Agency " who " stops bot " busy-bot-id " because agency " msg-sender " already handles it.")
         ]
       ]
     ]
-    
-    ;; Gå till nästa meddelande i kön
-    set incoming-msg get-message 
+
+    ;; Request from humans: acknowledge that agency received the report.
+    if performative = "request" and is-list? content [
+      if length content >= 2 and item 0 content = "investigate-post" [
+        let reply create-message "confirm"
+        set reply add-receiver msg-sender reply
+        set reply add-content (list "report-received" item 1 content) reply
+        send reply
+        output-print (word "AGENCY " who ": Confirmed report from human " msg-sender ".")
+      ]
+    ]
+
+    ;; Inform from humans: store as a report signal.
+    if performative = "inform" and is-list? content [
+      if not empty? content [
+        if item 0 content = "suspicious-topic" or item 0 content = "warning" [
+          set numberOfReports numberOfReports + 1
+          output-print (word "AGENCY " who ": Received warning from human " msg-sender ".")
+        ]
+      ]
+    ]
+
+    set incoming-msg get-message
   ]
 end
 
-;; === PROCEDUR FÖR ATT FATTA BESLUT OM INLÄGG ===
-to handle-target-action [target]
-  ;; Slumpa en siffra mellan 1 och 100
-  let slump-tal (random 100) + 1
-  
-  ifelse slump-tal > 50 [
-    ;; --- FALL A: RADERA ---
-    output-print (word "AGENCY: Siffra " slump-tal " - Raderar inlägg (Extremity: " [post-extremity] of target ") och går vidare.")
-    ask target [ die ] 
-  ] [
-    ;; --- FALL B: SLÄPP (Här slipper vi gruppens globala "Removed"-text) ---
-    output-print (word "AGENCY: Siffra " slump-tal " - Släpper inlägg och letar nästa.")
-    
-    ;; Spara inlägget i myndighetens interna minne
+
+to inspect-extreme-post [target]
+  if not is-agent? target [ stop ]
+
+  ;; Safety check: inspect/remove only posts in extremity interval 3-6.
+  ;; This uses variables only, not color.
+  if [post-removed?] of target [ stop ]
+  if [post-extremity] of target < 3 [ stop ]
+  if [post-extremity] of target > 6 [ stop ]
+
+  ;; Critical rule: every inspected post-agent is recorded exactly once.
+  ;; This happens before the chance decision, so released posts are not inspected again.
+  ;; A new post from the same bot has a new post agent/id, so it will still be inspected.
+  if not member? target inspected-posts [
     set inspected-posts lput target inspected-posts
+  ]
+
+  let slump-tal (random 100) + 1
+
+  ;; 70% removal, 30% release.
+  ifelse slump-tal <= 70 [
+    output-print (word "AGENCY: Inspecting P" [post-id] of target " extremity=" [post-extremity] of target " roll=" slump-tal " -> REMOVED")
+
+    ask target [
+      set post-removed? true
+      set post-viral? false
+      set post-shares 0
+      set post-likes 0
+      set label "REMOVED"
+      set size 0
+      hide-turtle
+    ]
+
+    set corrections-published corrections-published + 1
+    display
+  ] [
+    output-print (word "AGENCY: Inspecting P" [post-id] of target " extremity=" [post-extremity] of target " roll=" slump-tal " -> RELEASED")
+
+    ;; The post remains visible, but it is already in inspected-posts.
+    ;; Therefore it will not be inspected again during the simulation.
+    ask target [
+      set label "RELEASED"
+    ]
+
+    rt 90
+    if can-move? 0.4 [ fd 0.4 ]
   ]
 end
