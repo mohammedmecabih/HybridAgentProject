@@ -155,7 +155,7 @@ end
 
 
 
-; Bots_test 1
+; Bots_test 0
 ;; TEST: test_bot_create_post
 ;; Kontrollerar att den proaktiva boten kan skapa ett nytt inlägg korrekt.
 ;; Testet verifierar att:
@@ -225,5 +225,1017 @@ to test_bot_create_post
     if [post-viral?] of p = true or [post-removed?] of p = true [
       print "[FAIL] post viral/removed status is wrong"
     ]
+  ]
+end
+
+
+; Bots_test 1
+;; TEST: test_bot_broadcast_to_reactive_bots
+;; Kontrollerar att den proaktiva boten kan skicka inform-meddelanden
+;; till alla reaktiva bottar när en aktiv post finns.
+;; Testet verifierar att:
+;; 1. En post skapas och sätts som activePost hos agentA
+;; 2. agentA skickar ett inform-meddelande till alla agentBs
+;; 3. Meddelandet innehåller "new-post" och korrekt post-id
+;; 4. agentBs tar emot meddelandet i incoming-queue
+;; 5. När agentBs kör check-messages går de vidare till state "decide"
+;; Detta testar broadcast-post-to-reactive-bots och mottagning i check-messages
+
+to test_bot_broadcast_to_reactive_bots
+  clear-all
+
+  ;; required globals for bot code
+  set next-post-id 0
+  set total-posts-created 0
+  set last-created-post-id -1
+  set min-post-extremity 1
+  set max-post-extremity 10
+  set similar-post-mutation 2
+  set viral-share-threshold 10
+  set viral-like-threshold 5
+  set total-viral-posts 0
+  set total-posts-shared 0
+  set totalShares 0
+  set viralTrend 0
+  set debugMode false
+  set share-probability 60
+  set cautious-share-probability 30
+
+  setup-environment
+  setup-agentAs
+  setup-agentBs
+
+  ;; Skapa en post med agentA:s egen create-logik
+  ask one-of agentAs [
+    set createPostFlag true
+    reactive_agentAs
+  ]
+
+  print "TEST BOT BROADCAST TO REACTIVE BOTS"
+
+  ;; Kontrollera att posten skapades
+  if count posts = 1 [
+    print "[PASS] one post exists before broadcast"
+  ]
+
+  if count posts != 1 [
+    print (word "[FAIL] expected 1 post before broadcast, got " count posts)
+  ]
+
+  ;; Kontrollera att agentBs inte redan har meddelanden
+  if count agentBs with [not empty? incoming-queue] = 0 [
+    print "[PASS] agentBs have empty incoming-queue before broadcast"
+  ]
+
+  if count agentBs with [not empty? incoming-queue] != 0 [
+    print "[FAIL] some agentBs already had messages before broadcast"
+  ]
+
+  ;; Kör broadcast från agentA
+  ask one-of agentAs [
+    broadcast-post-to-reactive-bots
+  ]
+
+  ;; Kontrollera att alla agentBs fick ett meddelande
+  if count agentBs with [not empty? incoming-queue] = count agentBs [
+    print "[PASS] all agentBs received a message"
+  ]
+
+  if count agentBs with [not empty? incoming-queue] != count agentBs [
+    print (word "[FAIL] expected all agentBs to receive message, got "
+      count agentBs with [not empty? incoming-queue] " of " count agentBs)
+  ]
+
+  ;; Kontrollera att meddelandet har rätt performative och content
+  if count agentBs with [
+    not empty? incoming-queue and
+    get-performative first incoming-queue = "inform" and
+    item 0 get-content first incoming-queue = "new-post" and
+    item 1 get-content first incoming-queue = 0
+  ] = count agentBs [
+    print "[PASS] all messages have correct performative and content"
+  ]
+
+  if count agentBs with [
+    not empty? incoming-queue and
+    get-performative first incoming-queue = "inform" and
+    item 0 get-content first incoming-queue = "new-post" and
+    item 1 get-content first incoming-queue = 0
+  ] != count agentBs [
+    print "[FAIL] one or more messages have wrong performative or content"
+  ]
+
+  ;; Låt agentBs läsa sina meddelanden
+  ask agentBs [
+    check-messages
+  ]
+
+  ;; Kontrollera att alla agentBs gick till decide
+  if count agentBs with [state = "decide"] = count agentBs [
+    print "[PASS] all agentBs moved to state decide"
+  ]
+
+  if count agentBs with [state != "decide"] > 0 [
+    print (word "[FAIL] expected all agentBs in decide, got "
+      count agentBs with [state = "decide"] " of " count agentBs)
+  ]
+
+  ;; Kontrollera att alla agentBs sparade rätt post-id
+  if count agentBs with [currentPostId = 0] = count agentBs [
+    print "[PASS] all agentBs stored correct currentPostId"
+  ]
+
+  if count agentBs with [currentPostId != 0] > 0 [
+    print "[FAIL] one or more agentBs stored wrong currentPostId"
+  ]
+end
+
+
+
+; Bots_test 2
+;; TEST: test_bot_decide_share_logic
+;; Kontrollerar att agentB väljer mellan share och ignore beroende på
+;; postens extremitet, botens riskTolerance och sannolikhetsvariablerna.
+;; Testet verifierar att:
+;; 1. agentB går till state "share" när post-extremity är inom riskTolerance
+;;    och share-probability är 100
+;; 2. agentB går till state "ignore" när post-extremity är högre än riskTolerance
+;;    och cautious-share-probability är 0
+;; 3. agentB inte delar en borttagen post
+;; Detta testar decide-share-logiken i bots_reactive.nls
+
+to test_bot_decide_share_logic
+  clear-all
+
+  ;; required globals for bot code
+  set next-post-id 0
+  set total-posts-created 0
+  set last-created-post-id -1
+  set min-post-extremity 1
+  set max-post-extremity 10
+  set similar-post-mutation 2
+  set viral-share-threshold 10
+  set viral-like-threshold 5
+  set total-viral-posts 0
+  set total-posts-shared 0
+  set totalShares 0
+  set viralTrend 0
+  set debugMode false
+
+  ;; Gör testet deterministiskt
+  set share-probability 100
+  set cautious-share-probability 0
+
+  setup-environment
+  setup-agentAs
+  setup-agentBs
+
+  print "TEST BOT DECIDE-SHARE LOGIC"
+
+  ;; ------------------------------------------------------------
+  ;; CASE 1:
+  ;; Postens extremitet är lägre än riskTolerance.
+  ;; share-probability = 100, därför ska agentB välja share.
+  ;; ------------------------------------------------------------
+
+  ask one-of agentAs [
+    create-post-from-values "election" 3 -1
+  ]
+
+  let safePost one-of posts with [post-id = 0]
+
+  ask one-of agentBs [
+    set currentPost safePost
+    set currentPostId 0
+    set riskTolerance 10
+    set shareCooldown 0
+    set sharedPostIds []
+    set state "decide"
+
+    decide-share
+
+    if state = "share" [
+      print "[PASS] agentB chose share when post-extremity was within riskTolerance"
+    ]
+
+    if state != "share" [
+      print (word "[FAIL] expected state share, got " state)
+    ]
+  ]
+
+  ;; ------------------------------------------------------------
+  ;; CASE 2:
+  ;; Postens extremitet är högre än riskTolerance.
+  ;; Då används cautious-share-probability = 0,
+  ;; därför ska agentB välja ignore.
+  ;; ------------------------------------------------------------
+
+  ask one-of agentAs [
+    finish-active-post
+    create-post-from-values "security" 9 -1
+  ]
+
+  let riskyPost one-of posts with [post-id = 1]
+
+  ask one-of agentBs [
+    set currentPost riskyPost
+    set currentPostId 1
+    set riskTolerance 4
+    set shareCooldown 0
+    set sharedPostIds []
+    set state "decide"
+
+    decide-share
+
+    if state = "ignore" [
+      print "[PASS] agentB chose ignore when post-extremity was higher than riskTolerance"
+    ]
+
+    if state != "ignore" [
+      print (word "[FAIL] expected state ignore, got " state)
+    ]
+  ]
+
+  ;; ------------------------------------------------------------
+  ;; CASE 3:
+  ;; Om posten är borttagen ska agentB ignorera den direkt.
+  ;; ------------------------------------------------------------
+
+  ask riskyPost [
+    set post-removed? true
+  ]
+
+  ask one-of agentBs [
+    set currentPost riskyPost
+    set currentPostId 1
+    set riskTolerance 10
+    set shareCooldown 0
+    set sharedPostIds []
+    set state "decide"
+
+    decide-share
+
+    if state = "ignore" [
+      print "[PASS] agentB ignored removed post"
+    ]
+
+    if state != "ignore" [
+      print (word "[FAIL] expected removed post to be ignored, got " state)
+    ]
+  ]
+end
+
+
+; Bots_test 3
+;; TEST: test_bot_share_handling
+;; Kontrollerar att agentB:s do-share fungerar korrekt.
+;; Testet verifierar att:
+;; 1. post-shares ökar med 1 när agentB delar posten
+;; 2. currentPostId sparas i sharedPostIds
+;; 3. total-posts-shared ökar med 1
+;; 4. totalShares ökar med 1
+;; 5. post-frequency ökar med 1
+;; 6. shareCooldown sätts till 10
+;; 7. agentB återställs till state "check" efter delning
+;; Detta testar share-handlingen i bots_reactive.nls
+
+to test_bot_share_handling
+  clear-all
+
+  ;; required globals for bot code
+  set next-post-id 0
+  set total-posts-created 0
+  set last-created-post-id -1
+  set min-post-extremity 1
+  set max-post-extremity 10
+  set similar-post-mutation 2
+  set viral-share-threshold 10
+  set viral-like-threshold 5
+  set total-viral-posts 0
+  set total-posts-shared 0
+  set totalShares 0
+  set viralTrend 0
+  set debugMode false
+  set share-probability 100
+  set cautious-share-probability 0
+
+  setup-environment
+  setup-agentAs
+  setup-agentBs
+
+  ;; Skapa en post
+  ask one-of agentAs [
+    create-post-from-values "election" 3 -1
+  ]
+
+  let p one-of posts with [post-id = 0]
+
+  ;; Förbered en agentB så att den har en post att dela
+  ask one-of agentBs [
+    set currentPost p
+    set currentPostId 0
+    set sharedPostIds []
+    set ignoredPostIds []
+    set shareCooldown 0
+    set post-frequency 0
+    set state "share"
+
+    do-share
+  ]
+
+  print "TEST BOT SHARE HANDLING"
+
+  ;; Kontrollera att post-shares ökade
+  if [post-shares] of p = 1 [
+    print "[PASS] post-shares increased to 1"
+  ]
+
+  if [post-shares] of p != 1 [
+    print (word "[FAIL] expected post-shares 1, got " [post-shares] of p)
+  ]
+
+  ;; Kontrollera att post-id sparades i sharedPostIds
+  if count agentBs with [member? 0 sharedPostIds] = 1 [
+    print "[PASS] currentPostId was saved in sharedPostIds"
+  ]
+
+  if count agentBs with [member? 0 sharedPostIds] != 1 [
+    print "[FAIL] currentPostId was not saved in sharedPostIds"
+  ]
+
+  ;; Kontrollera total-posts-shared
+  if total-posts-shared = 1 [
+    print "[PASS] total-posts-shared increased to 1"
+  ]
+
+  if total-posts-shared != 1 [
+    print (word "[FAIL] expected total-posts-shared 1, got " total-posts-shared)
+  ]
+
+  ;; Kontrollera totalShares
+  if totalShares = 1 [
+    print "[PASS] totalShares increased to 1"
+  ]
+
+  if totalShares != 1 [
+    print (word "[FAIL] expected totalShares 1, got " totalShares)
+  ]
+
+  ;; Kontrollera post-frequency
+  if count agentBs with [post-frequency = 1] = 1 [
+    print "[PASS] post-frequency increased to 1"
+  ]
+
+  if count agentBs with [post-frequency = 1] != 1 [
+    print "[FAIL] post-frequency did not increase correctly"
+  ]
+
+  ;; Kontrollera shareCooldown
+  if count agentBs with [shareCooldown = 10] = 1 [
+    print "[PASS] shareCooldown was set to 10"
+  ]
+
+  if count agentBs with [shareCooldown = 10] != 1 [
+    print "[FAIL] shareCooldown was not set to 10"
+  ]
+
+  ;; Kontrollera att botten återställdes till check
+  if count agentBs with [state = "check"] = count agentBs [
+    print "[PASS] agentB returned to state check"
+  ]
+
+  if count agentBs with [state != "check"] > 0 [
+    print "[FAIL] one or more agentBs did not return to state check"
+  ]
+end
+
+
+
+; Bots_test 4
+;; TEST: test_bot_ignore_handling
+;; Kontrollerar att agentB:s do-ignore fungerar korrekt.
+;; Testet verifierar att:
+;; 1. post-shares inte ökar när agentB ignorerar posten
+;; 2. currentPostId sparas i ignoredPostIds
+;; 3. currentPost återställs till nobody
+;; 4. currentPostId återställs till -1
+;; 5. agentB återställs till state "check"
+;; Detta testar ignore-handlingen i bots_reactive.nls
+
+to test_bot_ignore_handling
+  clear-all
+
+  ;; required globals for bot code
+  set next-post-id 0
+  set total-posts-created 0
+  set last-created-post-id -1
+  set min-post-extremity 1
+  set max-post-extremity 10
+  set similar-post-mutation 2
+  set viral-share-threshold 10
+  set viral-like-threshold 5
+  set total-viral-posts 0
+  set total-posts-shared 0
+  set totalShares 0
+  set viralTrend 0
+  set debugMode false
+  set share-probability 100
+  set cautious-share-probability 0
+
+  setup-environment
+  setup-agentAs
+  setup-agentBs
+
+  ;; Skapa en post
+  ask one-of agentAs [
+    create-post-from-values "election" 3 -1
+  ]
+
+  let p one-of posts with [post-id = 0]
+
+  ;; Förbered en agentB så att den har en post att ignorera
+  ask one-of agentBs [
+    set currentPost p
+    set currentPostId 0
+    set sharedPostIds []
+    set ignoredPostIds []
+    set shareCooldown 0
+    set post-frequency 0
+    set state "ignore"
+
+    do-ignore
+  ]
+
+  print "TEST BOT IGNORE HANDLING"
+
+  ;; Kontrollera att post-shares inte ökade
+  if [post-shares] of p = 0 [
+    print "[PASS] post-shares stayed 0"
+  ]
+
+  if [post-shares] of p != 0 [
+    print (word "[FAIL] expected post-shares 0, got " [post-shares] of p)
+  ]
+
+  ;; Kontrollera att post-id sparades i ignoredPostIds
+  if count agentBs with [member? 0 ignoredPostIds] = 1 [
+    print "[PASS] currentPostId was saved in ignoredPostIds"
+  ]
+
+  if count agentBs with [member? 0 ignoredPostIds] != 1 [
+    print "[FAIL] currentPostId was not saved in ignoredPostIds"
+  ]
+
+  ;; Kontrollera att posten inte sparades i sharedPostIds
+  if count agentBs with [member? 0 sharedPostIds] = 0 [
+    print "[PASS] post was not saved in sharedPostIds"
+  ]
+
+  if count agentBs with [member? 0 sharedPostIds] != 0 [
+    print "[FAIL] post was incorrectly saved in sharedPostIds"
+  ]
+
+  ;; Kontrollera att currentPost återställdes
+  if count agentBs with [currentPost = nobody] = count agentBs [
+    print "[PASS] currentPost was reset to nobody"
+  ]
+
+  if count agentBs with [currentPost != nobody] > 0 [
+    print "[FAIL] currentPost was not reset correctly"
+  ]
+
+  ;; Kontrollera att currentPostId återställdes
+  if count agentBs with [currentPostId = -1] = count agentBs [
+    print "[PASS] currentPostId was reset to -1"
+  ]
+
+  if count agentBs with [currentPostId != -1] > 0 [
+    print "[FAIL] currentPostId was not reset correctly"
+  ]
+
+  ;; Kontrollera att botten återställdes till check
+  if count agentBs with [state = "check"] = count agentBs [
+    print "[PASS] agentB returned to state check"
+  ]
+
+  if count agentBs with [state != "check"] > 0 [
+    print "[FAIL] one or more agentBs did not return to state check"
+  ]
+end
+
+
+; Bots_test 5
+;; TEST: test_human_promote_post_interaction
+;; Kontrollerar kommunikationen mellan bot och humans via request, agree och refuse.
+;; Testet verifierar att:
+;; 1. agentA kan skicka ett request-meddelande till humans om att promota en post
+;; 2. humans tar emot requesten i sin incoming-queue
+;; 3. en human kan svara med agree
+;; 4. en human kan svara med refuse
+;; 5. agentA tar emot båda svaren i process-human-replies
+;; 6. humanAcceptCount och humanRejectCount uppdateras korrekt
+;; Detta testar result sharing mellan bots och humans
+
+to test_human_promote_post_interaction
+  clear-all
+
+  ;; required globals for bot/human code
+  set Number_AgentA 2
+  set next-post-id 0
+  set total-posts-created 0
+  set last-created-post-id -1
+  set min-post-extremity 1
+  set max-post-extremity 10
+  set similar-post-mutation 2
+  set viral-share-threshold 10
+  set viral-like-threshold 5
+  set total-viral-posts 0
+  set total-posts-shared 0
+  set totalShares 0
+  set viralTrend 0
+  set numberOfReports 0
+  set debugMode false
+
+  setup-environment
+  setup-agentAs
+  setup-humans
+
+  ;; Skapa en post som agentA kan be humans att promota
+  ask one-of agentAs [
+    create-post-from-values "election" 5 -1
+  ]
+
+  print "TEST HUMAN PROMOTE-POST INTERACTION"
+
+  ;; Kontrollera att en post finns
+  if count posts = 1 [
+    print "[PASS] one post exists before request"
+  ]
+
+  if count posts != 1 [
+    print (word "[FAIL] expected 1 post before request, got " count posts)
+  ]
+
+  ;; agentA skickar request till humans
+  ask one-of agentAs [
+    request-humans-to-promote-post
+  ]
+
+  ;; Kontrollera att alla humans fick request
+  if count humans with [not empty? incoming-queue] = count humans [
+    print "[PASS] all humans received a request message"
+  ]
+
+  if count humans with [not empty? incoming-queue] != count humans [
+    print (word "[FAIL] expected all humans to receive request, got "
+      count humans with [not empty? incoming-queue] " of " count humans)
+  ]
+
+  ;; Kontrollera att request-meddelandet har rätt performative och content
+  if count humans with [
+    not empty? incoming-queue and
+    get-performative first incoming-queue = "request" and
+    item 0 get-content first incoming-queue = "promote-post" and
+    item 1 get-content first incoming-queue = 0
+  ] = count humans [
+    print "[PASS] request messages have correct performative and content"
+  ]
+
+  if count humans with [
+    not empty? incoming-queue and
+    get-performative first incoming-queue = "request" and
+    item 0 get-content first incoming-queue = "promote-post" and
+    item 1 get-content first incoming-queue = 0
+  ] != count humans [
+    print "[FAIL] one or more request messages have wrong performative or content"
+  ]
+
+  ;; Humans läser requesten
+  ask humans [
+    process-human-messages
+  ]
+
+  ;; Kontrollera att humans sparade request-informationen
+  if count humans with [
+    receivedBotsRequest? = true and
+    requestedPostId = 0 and
+    requestedPostTopic = "election"
+  ] = count humans [
+    print "[PASS] humans stored the request information correctly"
+  ]
+
+  if count humans with [
+    receivedBotsRequest? = true and
+    requestedPostId = 0 and
+    requestedPostTopic = "election"
+  ] != count humans [
+    print "[FAIL] humans did not store request information correctly"
+  ]
+
+  ;; En human accepterar och en human nekar
+  let acceptingHuman one-of humans
+  ask acceptingHuman [
+    accept-bot-request
+  ]
+
+  ask one-of humans with [self != acceptingHuman] [
+    reject-bot-request
+  ]
+
+  ;; agentA tar emot svaren
+  ask one-of agentAs [
+    process-human-replies
+  ]
+
+  ;; Kontrollera agree
+  if [humanAcceptCount] of one-of agentAs = 1 [
+    print "[PASS] bot registered one agree reply"
+  ]
+
+  if [humanAcceptCount] of one-of agentAs != 1 [
+    print (word "[FAIL] expected humanAcceptCount 1, got "
+      [humanAcceptCount] of one-of agentAs)
+  ]
+
+  ;; Kontrollera refuse
+  if [humanRejectCount] of one-of agentAs = 1 [
+    print "[PASS] bot registered one refuse reply"
+  ]
+
+  if [humanRejectCount] of one-of agentAs != 1 [
+    print (word "[FAIL] expected humanRejectCount 1, got "
+      [humanRejectCount] of one-of agentAs)
+  ]
+
+  ;; Kontrollera att senaste reply gäller samma post
+  if [lastHumanReplyPostId] of one-of agentAs = 0 [
+    print "[PASS] bot stored correct lastHumanReplyPostId"
+  ]
+
+  if [lastHumanReplyPostId] of one-of agentAs != 0 [
+    print (word "[FAIL] expected lastHumanReplyPostId 0, got "
+      [lastHumanReplyPostId] of one-of agentAs)
+  ]
+end
+
+
+; Bots_test 6
+;; TEST: test_bot_viral_post_monitoring
+;; Kontrollerar att den proaktiva botten upptäcker när en aktiv post blir viral.
+;; Testet verifierar att:
+;; 1. En aktiv post kan få tillräckligt många shares och likes
+;; 2. update-post-status sätter post-viral? till true
+;; 3. hasViralPost? sätts till true hos agentA
+;; 4. observedViralPost blir samma post som activePost
+;; 5. FSM går från EvaluateBotPost till BotMonitorRemoval när posten är viral
+;; Detta testar viral post monitoring i bots_proactive.nls
+
+to test_bot_viral_post_monitoring
+  clear-all
+
+  ;; required globals for bot code
+  set next-post-id 0
+  set total-posts-created 0
+  set last-created-post-id -1
+  set min-post-extremity 1
+  set max-post-extremity 10
+  set similar-post-mutation 2
+  set viral-share-threshold 10
+  set viral-like-threshold 5
+  set total-viral-posts 0
+  set total-posts-shared 0
+  set totalShares 0
+  set viralTrend 0
+  set debugMode false
+  set share-probability 100
+  set cautious-share-probability 0
+
+  setup-environment
+  setup-agentAs
+
+  ;; Skapa en aktiv post
+  ask one-of agentAs [
+    create-post-from-values "election" 5 -1
+  ]
+
+  let p one-of posts with [post-id = 0]
+
+  ;; Gör posten viral genom att ge den tillräckligt många shares och likes
+  ask p [
+    set post-shares 10
+    set post-likes 5
+  ]
+
+  print "TEST BOT VIRAL POST MONITORING"
+
+  ;; Kör update-post-status så att agentA upptäcker viralitet
+  ask one-of agentAs [
+    update-post-status
+  ]
+
+  ;; Kontrollera att posten blev viral
+  if [post-viral?] of p = true [
+    print "[PASS] post-viral? was set to true"
+  ]
+
+  if [post-viral?] of p != true [
+    print "[FAIL] post-viral? was not set to true"
+  ]
+
+  ;; Kontrollera att agentA upptäckte viral post
+  if [hasViralPost?] of one-of agentAs = true [
+    print "[PASS] hasViralPost? was set to true"
+  ]
+
+  if [hasViralPost?] of one-of agentAs != true [
+    print "[FAIL] hasViralPost? was not set to true"
+  ]
+
+  ;; Kontrollera att observedViralPost är rätt post
+  if [observedViralPost] of one-of agentAs = p [
+    print "[PASS] observedViralPost is the active viral post"
+  ]
+
+  if [observedViralPost] of one-of agentAs != p [
+    print "[FAIL] observedViralPost is not the correct post"
+  ]
+
+  ;; Förbered FSM så att EvaluateBotPost kan gå vidare till BotMonitorRemoval
+  ask one-of agentAs [
+    set proState "EvaluateBotPost"
+    set waitTicks 39
+    set activePostBroadcasted? true
+
+    EvaluateBotPost
+  ]
+
+  ;; Kontrollera state-övergång
+  if [proState] of one-of agentAs = "BotMonitorRemoval" [
+    print "[PASS] FSM moved to BotMonitorRemoval"
+  ]
+
+  if [proState] of one-of agentAs != "BotMonitorRemoval" [
+    print (word "[FAIL] expected proState BotMonitorRemoval, got "
+      [proState] of one-of agentAs)
+  ]
+end
+
+
+
+; Bots_test 7
+;; TEST: test_bot_generate_similar_post
+;; Kontrollerar att den proaktiva boten kan skapa ett liknande inlägg
+;; baserat på en tidigare viral eller borttagen post.
+;; Testet verifierar att:
+;; 1. En originalpost skapas
+;; 2. originalpost sparas i previousPostForSimilarity
+;; 3. do-generate-similar-post skapar en ny post
+;; 4. Den nya posten får samma topic som originalposten
+;; 5. Den nya posten får parent-post-id som pekar på originalpostens post-id
+;; 6. Den nya postens extremitet ligger inom tillåtet mutationsintervall
+;; 7. numberOFRepost ökar med 1
+;; Detta testar generate-similar-post-logiken i bots_proactive.nls
+
+to test_bot_generate_similar_post
+  clear-all
+
+  ;; required globals for bot code
+  set next-post-id 0
+  set total-posts-created 0
+  set last-created-post-id -1
+  set min-post-extremity 1
+  set max-post-extremity 10
+  set similar-post-mutation 2
+  set viral-share-threshold 10
+  set viral-like-threshold 5
+  set total-viral-posts 0
+  set total-posts-shared 0
+  set totalShares 0
+  set viralTrend 0
+  set numberOFRepost 0
+  set debugMode false
+  set share-probability 100
+  set cautious-share-probability 0
+
+  setup-environment
+  setup-agentAs
+
+  ;; Skapa originalpost
+  ask one-of agentAs [
+    create-post-from-values "election" 5 -1
+  ]
+
+  let originalPost one-of posts with [post-id = 0]
+
+  ;; Avsluta activePost så att boten får skapa en ny liknande post
+  ask one-of agentAs [
+    set previousPostForSimilarity originalPost
+    finish-active-post
+    set generateSimilarPostFlag true
+    reactive_agentAs
+  ]
+
+  print "TEST BOT GENERATE SIMILAR POST"
+
+  ;; Kontrollera att två posts finns
+  if count posts = 2 [
+    print "[PASS] a new similar post was created"
+  ]
+
+  if count posts != 2 [
+    print (word "[FAIL] expected 2 posts, got " count posts)
+  ]
+
+  let newPost one-of posts with [post-id = 1]
+
+  ;; Kontrollera att nya posten finns
+  if newPost != nobody [
+    print "[PASS] new post with post-id 1 exists"
+  ]
+
+  if newPost = nobody [
+    print "[FAIL] new post with post-id 1 was not created"
+    stop
+  ]
+
+  ;; Kontrollera samma topic
+  if [post-topic] of newPost = [post-topic] of originalPost [
+    print "[PASS] new post has the same topic as original post"
+  ]
+
+  if [post-topic] of newPost != [post-topic] of originalPost [
+    print (word "[FAIL] expected topic " [post-topic] of originalPost
+      ", got " [post-topic] of newPost)
+  ]
+
+  ;; Kontrollera parent-post-id
+  if [parent-post-id] of newPost = [post-id] of originalPost [
+    print "[PASS] new post has correct parent-post-id"
+  ]
+
+  if [parent-post-id] of newPost != [post-id] of originalPost [
+    print (word "[FAIL] expected parent-post-id " [post-id] of originalPost
+      ", got " [parent-post-id] of newPost)
+  ]
+
+  ;; Kontrollera att extremiteten ligger inom mutationens intervall
+  let originalExtremity [post-extremity] of originalPost
+  let newExtremity [post-extremity] of newPost
+  let lowerBound originalExtremity - similar-post-mutation
+  let upperBound originalExtremity + similar-post-mutation
+
+  if lowerBound < min-post-extremity [
+    set lowerBound min-post-extremity
+  ]
+
+  if upperBound > max-post-extremity [
+    set upperBound max-post-extremity
+  ]
+
+  if newExtremity >= lowerBound and newExtremity <= upperBound [
+    print "[PASS] new post extremity is within allowed mutation range"
+  ]
+
+  if newExtremity < lowerBound or newExtremity > upperBound [
+    print (word "[FAIL] new extremity " newExtremity
+      " is outside allowed range " lowerBound "-" upperBound)
+  ]
+
+  ;; Kontrollera numberOFRepost
+  if numberOFRepost = 1 [
+    print "[PASS] numberOFRepost increased to 1"
+  ]
+
+  if numberOFRepost != 1 [
+    print (word "[FAIL] expected numberOFRepost 1, got " numberOFRepost)
+  ]
+
+  ;; Kontrollera att nya posten blev activePost
+  if [activePostId] of one-of agentAs = 1 [
+    print "[PASS] new similar post became activePost"
+  ]
+
+  if [activePostId] of one-of agentAs != 1 [
+    print (word "[FAIL] expected activePostId 1, got "
+      [activePostId] of one-of agentAs)
+  ]
+end
+
+
+
+; Bots_test 8
+;; TEST: test_bot_one_reactive_action_per_tick
+;; Kontrollerar att agentA bara utför en reaktiv handling per tick.
+;; Testet verifierar att:
+;; 1. Om flera reaktiva flaggor är true samtidigt körs bara den högst prioriterade handlingen
+;; 2. broadcastPostFlag har högst prioritet i reactive_agentAs
+;; 3. createPostFlag och generateSimilarPostFlag körs inte samtidigt när broadcast körs
+;; 4. clear-reactive-command rensar flaggorna efter utförd handling
+;; 5. actionExecuted? sätts till true
+;; Detta testar subsumption-prioriteten i reactive_agentAs
+
+to test_bot_one_reactive_action_per_tick
+  clear-all
+
+  ;; required globals for bot code
+  set next-post-id 0
+  set total-posts-created 0
+  set last-created-post-id -1
+  set min-post-extremity 1
+  set max-post-extremity 10
+  set similar-post-mutation 2
+  set viral-share-threshold 10
+  set viral-like-threshold 5
+  set total-viral-posts 0
+  set total-posts-shared 0
+  set totalShares 0
+  set viralTrend 0
+  set numberOFRepost 0
+  set debugMode false
+  set share-probability 100
+  set cautious-share-probability 0
+
+  setup-environment
+  setup-agentAs
+  setup-agentBs
+
+  ;; Skapa en första post så att broadcast kan köras
+  ask one-of agentAs [
+    create-post-from-values "election" 5 -1
+  ]
+
+  print "TEST BOT ONE REACTIVE ACTION PER TICK"
+
+  ;; Sätt flera flaggor till true samtidigt.
+  ;; reactive_agentAs ska bara köra broadcast eftersom den ligger först i prioriteten.
+  ask one-of agentAs [
+    set broadcastPostFlag true
+    set generateSimilarPostFlag true
+    set createPostFlag true
+    set actionExecuted? false
+
+    reactive_agentAs
+  ]
+
+  ;; Kontrollera att broadcast kördes genom att agentBs fick meddelanden
+  if count agentBs with [not empty? incoming-queue] = count agentBs [
+    print "[PASS] broadcast action was executed first"
+  ]
+
+  if count agentBs with [not empty? incoming-queue] != count agentBs [
+    print "[FAIL] broadcast action was not executed correctly"
+  ]
+
+  ;; Kontrollera att ingen ny post skapades av createPostFlag
+  if count posts = 1 [
+    print "[PASS] createPostFlag was not executed in the same tick"
+  ]
+
+  if count posts != 1 [
+    print (word "[FAIL] expected only 1 post, got " count posts)
+  ]
+
+  ;; Kontrollera att generateSimilarPostFlag inte skapade repost
+  if numberOFRepost = 0 [
+    print "[PASS] generateSimilarPostFlag was not executed in the same tick"
+  ]
+
+  if numberOFRepost != 0 [
+    print (word "[FAIL] expected numberOFRepost 0, got " numberOFRepost)
+  ]
+
+  ;; Kontrollera att flaggorna rensades
+  if count agentAs with [
+    broadcastPostFlag = false and
+    generateSimilarPostFlag = false and
+    createPostFlag = false
+  ] = count agentAs [
+    print "[PASS] all reactive flags were cleared"
+  ]
+
+  if count agentAs with [
+    broadcastPostFlag = true or
+    generateSimilarPostFlag = true or
+    createPostFlag = true
+  ] > 0 [
+    print "[FAIL] one or more reactive flags were not cleared"
+  ]
+
+  ;; Kontrollera att actionExecuted? sattes till true
+  if count agentAs with [actionExecuted? = true] = count agentAs [
+    print "[PASS] actionExecuted? was set to true"
+  ]
+
+  if count agentAs with [actionExecuted? != true] > 0 [
+    print "[FAIL] actionExecuted? was not set to true"
+  ]
+
+  ;; Kontrollera att selectedAction rensades
+  if count agentAs with [selectedAction = "none"] = count agentAs [
+    print "[PASS] selectedAction was reset to none"
+  ]
+
+  if count agentAs with [selectedAction != "none"] > 0 [
+    print "[FAIL] selectedAction was not reset correctly"
   ]
 end
