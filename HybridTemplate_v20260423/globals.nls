@@ -79,6 +79,7 @@ agencies-own [
   delegated-action
   delegated-target
   has-delegation?
+  busy-bot-ids 
 ]
 
 

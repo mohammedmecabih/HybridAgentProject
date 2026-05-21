@@ -79,6 +79,8 @@ turtles-own [
 ;**********************************************************************************************************************************************************
 to setup
   clear-all
+  
+ 
 
   ;; initialize time first
   initTime "2026/04/02 08:00:00"
@@ -145,6 +147,7 @@ to setup-agencies
     set incoming-queue []          
     set inspected-posts []        
     set proState_agency "Monitoring" ;; 
+    set busy-bot-ids []
   ]
 end
 
