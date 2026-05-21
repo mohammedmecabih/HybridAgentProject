@@ -72,7 +72,10 @@ to setup-agentAs
     set shape "bug"
     set size 2.5
     set color Yellow
-    move-to one-of patches
+
+    ifelse any? patches with [region = "source-zone"]
+    [ move-to random-source-patch ]
+    [ move-to one-of patches ]
 
     set homeLoc patch-here
     set localxy patch-here
@@ -241,6 +244,10 @@ to update-post-labels
 
     if post-removed? [
       set label "REMOVED"
+
+      if any? patches with [region = "moderation-zone"] [
+        move-to random-moderation-patch
+      ]
     ]
   ]
 end
@@ -272,7 +279,9 @@ to create-post-from-values [topic extremity parentId]
     set color post-color post-extremity
     set label (word "P" post-id " S" post-shares " L" post-likes)
 
-    move-to one-of patches
+    ifelse any? patches with [region = "feed-zone"]
+    [ move-to random-feed-patch ]
+    [ move-to one-of patches ]
   ]
 
   set targetPost one-of posts with [post-id = newPostId]
@@ -470,6 +479,10 @@ to update-post-status
       set total-viral-posts total-viral-posts + 1
       set viralTrend viralTrend + 1
       set color yellow
+
+      if any? patches with [region = "viral-zone"] [
+        move-to random-viral-patch
+      ]
     ]
   ]
   ; Uppdaterar texten som syns på posts.

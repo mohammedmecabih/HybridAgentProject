@@ -43,7 +43,10 @@ to setup-agentBs
     set shape "bug"
     set size 1.4
     set color blue
-    move-to one-of patches
+
+    ifelse any? patches with [region = "feed-zone"]
+    [ move-to random-feed-patch ]
+    [ move-to one-of patches ]
 
     set homeLoc patch-here
     set localxy patch-here
@@ -140,7 +143,7 @@ to check-messages
         ; Söker upp posten i posts-breed
         set currentPost one-of posts with [post-id = wantedPostId]
 
-        ; Om posten hittas → gå till decide-state
+        ; Om posten hittas -> gå till decide-state
         ifelse currentPost != nobody [
           set state "decide"
         ] [
@@ -157,7 +160,7 @@ to decide-share
   set color cyan
   set label "DECIDE"
 
-  ; Om posten inte finns → ignorera
+  ; Om posten inte finns -> ignorera
   if currentPost = nobody [
     set state "ignore"
     stop
@@ -204,20 +207,17 @@ to do-share
   set color green
   set label "SHARE"
 
-  if currentPost != nobody [
+  if currentPost != nobody and not [post-removed?] of currentPost [
 
     ; Uppdaterar postens antal shares
     ask currentPost [
-      if not post-removed? [
+      set post-shares post-shares + 1
 
-        set post-shares post-shares + 1
-
-        ; Uppdaterar label beroende på viral-status
-        ifelse post-viral? [
-          set label (word "P" post-id " S" post-shares " L" post-likes " VIRAL")
-        ] [
-          set label (word "P" post-id " S" post-shares " L" post-likes)
-        ]
+      ; Uppdaterar label beroende på viral-status
+      ifelse post-viral? [
+        set label (word "P" post-id " S" post-shares " L" post-likes " VIRAL")
+      ] [
+        set label (word "P" post-id " S" post-shares " L" post-likes)
       ]
     ]
 

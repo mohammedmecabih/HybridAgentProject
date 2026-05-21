@@ -5,18 +5,237 @@
 ;*********************************************************************************************************************************************************
 ; LOGBOOK OF UPDATES IN THIS FILE
 ; --Date--- |-----Description--------------------------------------------------------------------------------|---Person(s)-------------------------------
-; 20250423    Initial template of some dummy reporters                                                            Gion
-;
-;
+; 20250423    Initial template of some dummy reporters                                          Gion
+; 20260521    Added post ranking reporters for bot/social-media simulation                       Ali, Abdulmajid
 ;
 ;********************end logbook ************************************************************************************************************************
 
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------
-; reporters used in the plot function by the monitor-windows 
+; HUMANS REPORTERS
+
 to-report humansSharing
   report count humans with [shareFlag = true]
 end
 
+;-------------------------------------------------------------------------------------------------------------------------------------------------------
+; POST COUNTERS
 
+to-report number-of-posts
+  report count posts
+end
 
+to-report number-of-active-posts
+  report count posts with [not post-removed?]
+end
+
+to-report number-of-viral-posts
+  report count posts with [post-viral?]
+end
+
+to-report number-of-removed-posts
+  report count posts with [post-removed?]
+end
+
+to-report number-of-reactive-bots
+  report count agentBs
+end
+
+to-report number-of-proactive-bots
+  report count agentAs
+end
+
+;-------------------------------------------------------------------------------------------------------------------------------------------------------
+; PROJECT GLOBAL REPORTERS
+
+to-report bot-total-shares
+  report totalShares
+end
+
+to-report latest-viral-trend
+  report viralTrend
+end
+
+to-report number-of-reposts
+  report numberOFRepost
+end
+
+;-------------------------------------------------------------------------------------------------------------------------------------------------------
+; POST STATISTICS
+
+to-report total-post-shares
+  ifelse any? posts
+  [ report sum [post-shares] of posts ]
+  [ report 0 ]
+end
+
+to-report total-post-likes
+  ifelse any? posts
+  [ report sum [post-likes] of posts ]
+  [ report 0 ]
+end
+
+to-report average-post-shares
+  ifelse any? posts
+  [ report precision mean [post-shares] of posts 2 ]
+  [ report 0 ]
+end
+
+to-report average-post-likes
+  ifelse any? posts
+  [ report precision mean [post-likes] of posts 2 ]
+  [ report 0 ]
+end
+
+to-report average-extremity
+  ifelse any? posts
+  [ report precision mean [post-extremity] of posts 2 ]
+  [ report 0 ]
+end
+
+to-report max-extremity
+  ifelse any? posts
+  [ report max [post-extremity] of posts ]
+  [ report 0 ]
+end
+
+to-report max-shares
+  ifelse any? posts
+  [ report max [post-shares] of posts ]
+  [ report 0 ]
+end
+
+;-------------------------------------------------------------------------------------------------------------------------------------------------------
+; POST SUMMARY HELPERS
+
+to-report post-ranking
+  if not any? posts [
+    report "No posts created yet"
+  ]
+
+  report "Use the Output widget for full ranking"
+end
+
+to-report top-post
+  if not any? posts [
+    report "No posts created yet"
+  ]
+
+  let p max-one-of posts [post-shares]
+  report short-post-summary p
+end
+
+to-report viral-post-list
+  if not any? posts with [post-viral?] [
+    report "No viral posts yet"
+  ]
+
+  let viral-posts sort-by [[a b] -> [post-shares] of a > [post-shares] of b] posts with [post-viral?]
+  let output "Viral posts:"
+  foreach viral-posts [p ->
+    set output (word output "\n" short-post-summary p)
+  ]
+
+  report output
+end
+
+to-report removed-post-list
+  if not any? posts with [post-removed?] [
+    report "No removed posts yet"
+  ]
+
+  let removed-posts sort-by [[a b] -> [post-shares] of a > [post-shares] of b] posts with [post-removed?]
+  let output "Removed posts:"
+  foreach removed-posts [p ->
+    set output (word output "\n" short-post-summary p)
+  ]
+
+  report output
+end
+
+to-report short-post-summary [p]
+  report (word
+    "P" [post-id] of p
+    " | S:" [post-shares] of p
+    " | L:" [post-likes] of p
+    " | E:" [post-extremity] of p
+    " | " post-status p
+    " | " [post-topic] of p
+    " | parent:" post-parent-label p)
+end
+
+to-report post-status [p]
+  if [post-removed?] of p [report "removed"]
+  if [post-viral?] of p [report "viral"]
+  report "active"
+end
+
+to-report post-parent-label [p]
+  ifelse [parent-post-id] of p = -1
+  [ report "-" ]
+  [ report (word "P" [parent-post-id] of p) ]
+end
+
+;-------------------------------------------------------------------------------------------------------------------------------------------------------
+; BOT STATE REPORTERS
+
+to-report proactive-bot-state
+  ifelse any? agentAs
+  [ report [proState] of one-of agentAs ]
+  [ report "no proactive bot" ]
+end
+
+to-report reactive-bots-checking
+  report count agentBs with [state = "check"]
+end
+
+to-report reactive-bots-deciding
+  report count agentBs with [state = "decide"]
+end
+
+to-report reactive-bots-sharing
+  report count agentBs with [state = "share"]
+end
+
+to-report reactive-bots-ignoring
+  report count agentBs with [state = "ignore"]
+end
+
+to-report banned-bots
+  report count agentBs with [is-banned?]
+end
+
+;-------------------------------------------------------------------------------------------------------------------------------------------------------
+; OUTPUT WIDGET
+
+to update-post-ranking-output
+  clear-output
+
+  output-print "Ranking by shares"
+  output-print "-----------------"
+  output-print (word "totalShares = " totalShares)
+  output-print (word "viralTrend = " viralTrend)
+  output-print (word "numberOFRepost = " numberOFRepost)
+  output-print ""
+  output-print "S = shares, L = likes, E = extremity"
+  output-print "parent:Pn = similar content generated from post Pn"
+  output-print ""
+
+  if not any? posts [
+    output-print "No posts created yet"
+    stop
+  ]
+
+  let ranked-posts sort-by [[a b] ->
+    ifelse-value ([post-viral?] of a != [post-viral?] of b)
+    [ [post-viral?] of a ]
+    [ [post-shares] of a > [post-shares] of b ]
+  ] posts
+
+  let rank 1
+
+  foreach ranked-posts [p ->
+    output-print (word rank ". " short-post-summary p)
+    set rank rank + 1
+  ]
+end
 
