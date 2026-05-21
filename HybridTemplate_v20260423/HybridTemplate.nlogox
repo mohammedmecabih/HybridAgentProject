@@ -171,11 +171,10 @@ to go
       ;; Proaktivt lager (FSM)
       proactive_humans
 
-      ;; Uppdatera minne baserat på intention
-      update-memory
 
       ;; Reaktivt lager (utför handling)
       reactive_humans
+      
     ]
 
     ;;  agentA (hybrid bots) 
