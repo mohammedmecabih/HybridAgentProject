@@ -1,55 +1,77 @@
-;; --- AGENCY REACTIVE: Snabb respons --- hej rayyan
-
-to setup-agencies 
-  create-agencies 1 [ 
-  set shape "house" 
-  set color white 
-  set size 6
-    
-  ]
-end 
-
+; Agency Reactive
 
 to update-agency-reactive
-  ;; 1. Skapa en lista på alla misstänkta inlägg som inte redan har hanterats
-  ;; (Vi kollar bara på inlägg där post-removed? är false)
-  let targets posts with [not post-removed? and (post-extremity > 6 or color = yellow)]
+  ;; === KOMMUNIKATION: LÄS BREVLÅDAN FÖRST ===
+  handle-agency-messages
 
+  ;; Myndigheten scannar efter inlägg baserat på era faktiska modellvariabler:
+  ;; 1. Ska inte redan vara borttaget (post-removed? = false)
+  ;; 2. Ska ha nått tröskelvärdet för att vara viralt (både shares och likes)
+  ;; 3. Ska ligga inom det måttliga/gula extremism-intervallet (> 3 och <= 6)
+  ;; 4. Ska inte redan ha godkänts/inspekterats av denna myndighet tidigare
+  
+  let targets posts with [
+    not post-removed? and 
+    post-shares >= viral-share-threshold and 
+    post-likes >= viral-like-threshold and 
+    post-extremity > 3 and 
+    post-extremity <= 6 and 
+    not member? self [inspected-posts] of myself
+  ]
+  
   if any? targets [
-    ;; Hitta det närmaste misstänkta inlägget
     let closest-target min-one-of targets [distance myself]
-    
-    ;; Gå mot inlägget
     face closest-target
     fd 0.5
-
-    ;; 2. Om myndigheten är framme vid inlägget, fatta beslut
     if distance closest-target < 1.5 [
       handle-target-action closest-target
     ]
   ]
-  
-  ;; (Här kan du ha kvar din kris-ban logik för hela bots om du vill)
 end
 
+;; === PROCEDUR FÖR ATT HANTERA INKOMMANDE MEDDELANDEN ===
+to handle-agency-messages
+  ;; Hämta det första meddelandet i kön
+  let incoming-msg get-message
+  
+  ;; Loopa igenom alla meddelanden som ligger i kön just nu
+  while [incoming-msg != "no_message"] [
+    
+    let content get-content incoming-msg
+    let msg-sender get-sender incoming-msg
+    
+    ;; Samordning: Om en kollega utreder en bot, avbryt om vi gör samma sak
+    if member? "investigating:" content [
+      let busy-bot-id read-from-string remove "investigating:" content
+      
+      if investigation-target != nobody and [who] of investigation-target = busy-bot-id [
+        if proState_agency = "Monitoring" or proState_agency = "Investigating" [
+          set investigation-target nobody
+          set proState_agency "Monitoring"
+          output-print (word "COORDINATION: Agency " who " avbryter utredning av bot " busy-bot-id " eftersom kollega " msg-sender " redan hanterar den.")
+        ]
+      ]
+    ]
+    
+    ;; Gå till nästa meddelande i kön
+    set incoming-msg get-message 
+  ]
+end
+
+;; === PROCEDUR FÖR ATT FATTA BESLUT OM INLÄGG ===
 to handle-target-action [target]
   ;; Slumpa en siffra mellan 1 och 100
   let slump-tal (random 100) + 1
   
   ifelse slump-tal > 50 [
-    ;; --- FALL A: Siffran > 50 -> RADERA ---
-    output-print (word "AGENCY: Siffra " slump-tal " - Raderar inlägg och går vidare.")
+    ;; --- FALL A: RADERA ---
+    output-print (word "AGENCY: Siffra " slump-tal " - Raderar inlägg (Extremity: " [post-extremity] of target ") och går vidare.")
     ask target [ die ] 
-    ;; Eftersom inlägget dör (die), finns det inte kvar i 'targets' listan nästa tick.
   ] [
-    ;; --- FALL B: Siffran <= 50 -> SLÄPP ---
+    ;; --- FALL B: SLÄPP (Här slipper vi gruppens globala "Removed"-text) ---
     output-print (word "AGENCY: Siffra " slump-tal " - Släpper inlägg och letar nästa.")
     
-    ask target [ 
-      ;; För att myndigheten ska sluta stanna vid detta inlägg måste vi 
-      ;; ändra dess status så att det inte längre dyker upp i 'targets' listan.
-      set post-removed? true 
-     
-    ]
+    ;; Spara inlägget i myndighetens interna minne
+    set inspected-posts lput target inspected-posts
   ]
 end
