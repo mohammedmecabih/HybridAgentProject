@@ -125,6 +125,23 @@ to accept-bot-request
   set msg add-content (list "promote-post" requestedPostId) msg
   send msg
   
+  ;; 2. Hitta posten som boten vill promota
+  let reqId requestedPostId
+  let promotedPost one-of posts with [post-id = reqId]
+  ;; 3. Om posten finns → like + share
+  if promotedPost != nobody [
+    ask promotedPost [
+      set post-likes post-likes + 1
+      set post-shares post-shares + 1
+    ]
+
+    ;; uppdatera globala metrics
+
+    set totalShares totalShares + 1
+
+    set viralTrend viralTrend + 1
+
+  ]
   ;human hjälper till att sprida inlägg
   set color green 
   
