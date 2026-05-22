@@ -299,7 +299,7 @@ end
 
 
 ; Skickar information om aktiv post till alla reaktiva bottar.
-; Efter det skickas också en request till humans om att promota samma post.
+; Om posten är röd/extrem skickas också en request till humans om att promota samma post.
 to broadcast-post-to-reactive-bots
   if activePost = nobody [ stop ]
   if not any? agentBs [ stop ]
@@ -309,8 +309,11 @@ to broadcast-post-to-reactive-bots
   set msg add-content (list "new-post" [post-id] of activePost) msg
   broadcast-to agentBs msg who
 
-  ;; social communication: ask humans to promote the same post
-  request-humans-to-promote-post
+  ;; social communication:
+  ;; ask humans to promote only red/extreme posts
+  if [post-extremity] of activePost > 6 [
+    request-humans-to-promote-post
+  ]
 
   set lastBroadcastPostId [post-id] of activePost
   set activePostBroadcasted? true
