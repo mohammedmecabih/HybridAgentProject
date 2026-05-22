@@ -10,11 +10,16 @@
 ; 20260511  v2.3  receive/request processing from bots, agency confirmations, (Hamed)
 ; 20260511  v2.3  decision-making for accept/reject requests,(Hamed)
 ; 20260511  v2.3  and proactive inform messages to agency agents. (Hamed)
+; 20260521  v2.4  Added inform-agency based on reportedMemory (Hamed)
+; 20260521  v2.5  Added request-agency escalation logic (Hamed)
+; 20260521  v2.6  Extended DelegateAction with agency actions (Hamed)
+; 20260521  v2.7  Prioritized memory-based decisions in EvaluatePost (Hamed)
+; 20260521  v2.8  Improved proactive FSM with memory and communication (Hamed)
 ;***************************************************************
 
 humans-own [
 
- ;; BELIEFS (perception state)
+  ;Beliefs
   postDetected
   postInteresting
   postVeryInteresting
@@ -30,8 +35,7 @@ humans-own [
   
   seenPostIds
   
-  ;; COMMUNICATION VARIABLES
-  ;; används av process-human-messages
+  ;för Kommuniktion 
   receivedBotsRequest? 
   lastBotsSender
   requestedPostId
@@ -39,7 +43,7 @@ humans-own [
   agencyConfirmed? 
   sentAgencyInform?
 
-  ;; ENVIRONMENT STATE
+  ;Environment
   nearbyPosts
   currentPost
   emotionTone
@@ -49,8 +53,7 @@ humans-own [
   vision
   localxy
 
- ;; REACTIVE FLAGS
-  ;; sätts i updateEnvironmentInfo_humans
+  ; Reactive flags 
   interestingFlag
   veryInterestingFlag
   suspiciousFlag
@@ -63,7 +66,6 @@ humans-own [
   replyFlag
   
   ;Hamed har lagt dessa för minne
-  ;; MEMORY (för långsiktigt beteende)
   likedMemory  
   sharedMemory
   ignoredMemory
@@ -80,10 +82,10 @@ humans-own [
   is-banned?
    
   
-  ;; SHARED VARIABLE mellan proaktiv och reaktiv del
+  ;Shared 
   selectedAction
 
-  ;; PROACTIVE FSM-STATE
+  ;Proactive 
   currentGoal
   currentIntention
   proState
@@ -93,7 +95,6 @@ humans-own [
 
 to setup-humans
   create-humans Number_AgentA [
-      ;; initiera agentens utseende och position
     set shape "person"
     set color white
     set size 1
@@ -101,7 +102,7 @@ to setup-humans
 
     set vision 15
 
-      ;; initiera beliefs
+    ;beliefs
     set postDetected false
     set postInteresting false
     set postVeryInteresting false
@@ -115,7 +116,7 @@ to setup-humans
     set sourceTrusted false
     set sourceUntrusted false
 
-    ;; initiera reaktiva flaggor
+    ; reactive flags
     set interestingFlag false
     set veryInterestingFlag false
     set suspiciousFlag false
@@ -127,7 +128,7 @@ to setup-humans
     set reportFlag false
     set replyFlag false
     
-   ;; initiera kommunikationsvariabler
+    ;för kommunikation 
     set incoming-queue []
     set receivedBotsRequest? false 
     set lastBotsSender nobody
@@ -136,16 +137,16 @@ to setup-humans
     set agencyConfirmed? false
     set sentAgencyInform? false
 
-  ;; shared variabel mellan proaktiv och reaktiv del
+    ; shared
     set selectedAction "none"
 
-   ;; initiera proaktiv FSM
+    ;proactive
     set currentGoal "None"
     set currentIntention "None"
     set proState "Scrolling"
     set planQueue []
 
-  ;; initiera miljövariabler
+    ; environment
     set currentPost nobody
     set emotionTone 0
     set viralScore 0
@@ -153,7 +154,6 @@ to setup-humans
     set postRelevance 0
     
     ;Hamed skriv detta
-     ;; initiera minne
     set likedMemory 0
     set sharedMemory 0
     set ignoredMemory 0
@@ -175,32 +175,30 @@ end
 
 
 to updateEnvironmentInfo_humans
-   ;; först: ta emot meddelanden (reaktivt)
   
   process-human-messages
   
   set localxy patch-here
   
-   ;; nollställ reaktiva flaggor varje tick
+  
+  ;set currentPostType one-of ["politics" "sport" "news" "conspiracy"]
+  ; reset reactive flags
   set postDetected false
   set interestingFlag false
   set veryInterestingFlag false
   set suspiciousFlag false
   set commentFlag false
   set currentPost nobody
+  ; TEMPORARY RANDOM LOGIC
   
-  ;; hitta nya inlägg inom synfältet
   let unseenPosts posts in-radius vision with [not member? post-id [seenPostIds] of myself]
   if any? unseenPosts [
     set currentPost one-of unseenPosts
     set seenPostIds lput [post-id] of currentPost seenPostIds
     set postDetected true
     set currentPostType [post-topic] of currentPost
-    
-     ;; sätt reaktiva flaggor baserat på extremitet
   if [post-extremity] of currentPost >= 8 [
-      
-  ;; slumpmässig chans att vilja kommentera
+
   if random 100 < 80 [ set suspiciousFlag true ]
 
 ]
@@ -224,7 +222,7 @@ if [post-extremity] of currentPost < 5 [
       
 end
 
-;; KOMMUNIKATION: ta emot meddelanden från bots och agency
+;för ta emot meddelande från bots och bekräftelse från agency
 
 to process-human-messages
   while [not empty? incoming-queue] [
@@ -232,7 +230,6 @@ to process-human-messages
     let sender get-sender msg
     let performative get-performative msg
     let msgContent get-content msg
-    
     ;bots ber human att promota ett inlägg
     if performative = "request" [
       if item 0 msgContent = "promote-post" [
@@ -243,7 +240,7 @@ to process-human-messages
       ]
     ]
     
- ;; agency bekräftar rapport
+    ;agency bekräftelse 
      
     if performative = "confirm" [
       if item 0 msgContent = "report-received" [
@@ -256,7 +253,7 @@ end
 
 
         
-  ;; PROAKTIV DEL: FSM  
+    
 
 
 to proactive_humans
@@ -265,12 +262,10 @@ end
 
 
 to Scrolling
-  ;; om bot skickat request → avbryt scroll och utvärdera
   if receivedBotsRequest? [
     set proState "EvaluatePost"
     stop
   ]
-   ;; om nytt inlägg upptäckt → utvärdera
   if postDetected [
     set proState "EvaluatePost"
   ]
@@ -289,7 +284,6 @@ to EvaluatePost
     set proState "DelegateAction"
     stop
   ]
-   ;; om inget inlägg → gå tillbaka till scrolling
   if not postDetected or currentPost = nobody [
     set currentIntention "None"
     set selectedAction "none"
@@ -297,14 +291,13 @@ to EvaluatePost
     stop
   ]
   
-  ;; reaktiva triggers styr intentioner
+
   ;; först: reagera på själva inlägget
   if suspiciousFlag [
     set currentIntention "ReportPost"
     set proState "DelegateAction"
     stop
   ]
-  ;; om human rapporterat mycket → informera agency
   
   if reportedMemory >= 4 and not sentAgencyInform? [
     set currentIntention "informAgency"
@@ -331,7 +324,7 @@ to EvaluatePost
     stop
   ]
 
-  ;; minnesbaserat beteende minne används bara om inget annat styrde
+  ;; sedan: använd minne bara om inget annat styrde
   if member? currentPostType reportedPostTypes [
     set currentIntention "ReportPost"
     set proState "DelegateAction"
@@ -355,14 +348,14 @@ to EvaluatePost
     set proState "DelegateAction"
     stop
   ]
-  ;; default-intention
+
   set currentIntention "IgnorePost"
   set proState "DelegateAction"
 end
 
 
 to DelegateAction
-  ;; översätt intention → selectedAction (som reaktiv del exekverar)
+  
   
   if currentIntention = "acceptBotsRequest" [
     set selectedAction "accept-bot-request"
@@ -402,7 +395,6 @@ end
 
 
 ;Hamed skriv detta 
-;; MINNESUPPDATERING
 to update-memory
   if selectedAction = "like" [
     set likedMemory likedMemory + 1

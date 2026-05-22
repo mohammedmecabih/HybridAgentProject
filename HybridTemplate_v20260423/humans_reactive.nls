@@ -9,6 +9,11 @@
 ; 20260511  v2.3  accept/reject bot requests and inform-agency messaging (Hamed)
 ; 20260511  v2.3  using ACL-style performatives. (Hamed)
 ; 20260512  v2.4  Added broadcast-warning, broadcast-share, request-agency (Mohammed)
+; 20260521  v2.5  Added update-memory calls after reactive actions (Hamed)
+; 20260521  v2.5  Fixed execution order between reactive actions and memory update (Hamed)
+; 20260521  v2.6  Improved accept-bot-request to include like and share behavior (Hamed)
+; 20260521  v2.6  Fixed post selection using requestedPostId in accept-bot-request (Hamed)
+; 20260521  v2.7  Cleaned reactive logic and ensured single action execution (Hamed)
 ;***************************************************************
 
 

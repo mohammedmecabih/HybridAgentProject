@@ -550,10 +550,6 @@ to-report post-color [extremity]
 end
 
 
-
-
-
-
 ; Läser inkommande svar från humans efter att boten har skickat en request.
 ; Humans kan svara med "agree" om de accepterar eller "refuse" om de avvisar.
 ; Svaret sparas i botens variabler och visas även visuellt/debug i modellen.
