@@ -35,6 +35,10 @@ agentBs-own [
   is-banned?
   post-frequency
   account-age
+  ;; Contract / joint intention variables
+  contract-active?
+  contract-posts-left
+  contract-cooldown
 ]
 
 ; Skapar alla reaktiva bottar och initialiserar deras variabler och starttillstånd.
@@ -80,6 +84,10 @@ to setup-agentBs
     set is-banned? false
     set post-frequency 0
     set account-age random 20
+    
+    set contract-active? false
+    set contract-posts-left 0
+    set contract-cooldown 5
   ]
 end
 
@@ -117,9 +125,15 @@ to reactive_agentBs
 end
 
 ; Läser inkommande meddelanden från incoming-queue.
+; Läser inkommande meddelanden från incoming-queue.
 to check-messages
+  ifelse contract-active? [
+  set color violet
+  set label "CHECK\nKONTRAKT"
+] [
   set color blue
   set label "CHECK"
+]
 
   ; Kontrollerar om kön innehåller meddelanden
   if not empty? incoming-queue [
@@ -129,26 +143,54 @@ to check-messages
 
     ; Kontrollerar att det är ett inform-meddelande
     if get-performative currentMessage = "inform" [
-
       let content get-content currentMessage
 
       ; Kontrollerar att innehållet gäller ett nytt inlägg
       if item 0 content = "new-post" [
-
-        ; Hämtar post-id från meddelandet
         set currentPostId item 1 content
 
         let wantedPostId currentPostId
-
-        ; Söker upp posten i posts-breed
         set currentPost one-of posts with [post-id = wantedPostId]
 
-        ; Om posten hittas -> gå till decide-state
         ifelse currentPost != nobody [
           set state "decide"
         ] [
-          ; Annars ignoreras posten
           set state "ignore"
+        ]
+      ]
+    ]
+
+    ; Kontrollerar om det är ett request-meddelande från huvudbotten
+    if get-performative currentMessage = "request" [
+      let content get-content currentMessage
+      let contractSender get-sender currentMessage
+
+      ; Kontrollerar att requesten gäller viral-contract
+      if item 0 content = "viral-contract" [
+
+        ; Cirka 30% av reaktiva bottar accepterar avtalet
+        ifelse random 100 < 30 [
+          set contract-active? true
+          set contract-posts-left item 1 content
+
+          let reply create-message "agree"
+          set reply add-receiver contractSender reply
+          set reply add-content (list "viral-contract" who contract-posts-left) reply
+          send reply
+
+          set color green
+          set label "CONTRACT"
+        ] [
+          set contract-active? false
+          set contract-posts-left 0
+
+          let reply create-message "refuse"
+          set reply add-receiver contractSender reply
+          set reply add-content (list "viral-contract" who) reply
+          send reply
+
+          set color red
+          set label "NO CONTRACT"
         ]
       ]
     ]
@@ -157,8 +199,13 @@ end
 
 ; Bestämmer om botten ska dela eller ignorera posten.
 to decide-share
+  ifelse contract-active? [
+  set color violet
+  set label "DECIDE\nKONTRAKT"
+] [
   set color cyan
   set label "DECIDE"
+]
 
   ; Om posten inte finns -> ignorera
   if currentPost = nobody [
@@ -184,6 +231,13 @@ to decide-share
     stop
   ]
 
+  ; Om botten har accepterat contract måste den dela posten
+  if contract-active? and contract-posts-left > 0 [
+    set willShare? true
+    set state "share"
+    stop
+  ]
+
   ; Grundsannolikhet för delning
   let prob share-probability
 
@@ -204,8 +258,13 @@ end
 
 ; Delar posten och uppdaterar statistik.
 to do-share
+  ifelse contract-active? [
+  set color violet
+  set label (word "SHARE\nKONTRAKT " contract-posts-left)
+] [
   set color green
   set label "SHARE"
+]
 
   if currentPost != nobody and not [post-removed?] of currentPost [
 
@@ -229,8 +288,20 @@ to do-share
     set totalShares totalShares + 1
     set post-frequency post-frequency + 1
 
-    ; Aktiverar cooldown
-    set shareCooldown 10
+    ; Contracted bots får halverad cooldown och använder 1 contract-post
+    ifelse contract-active? and contract-posts-left > 0 [
+      set shareCooldown contract-cooldown
+      set contract-posts-left contract-posts-left - 1
+
+      if contract-posts-left <= 0 [
+        set contract-active? false
+        set contract-posts-left 0
+        set label "CONTRACT DONE"
+      ]
+    ] [
+      ; Vanliga bottar får normal cooldown
+      set shareCooldown 10
+    ]
   ]
 
   ; Återställer botten till start-state
@@ -259,4 +330,12 @@ to reset-bot
 
   ; Återgår till första state i FSM
   set state "check"
+
+  ifelse contract-active? [
+    set color violet
+    set label "CHECK\nKONTRAKT"
+  ] [
+    set color blue
+    set label "CHECK"
+  ]
 end

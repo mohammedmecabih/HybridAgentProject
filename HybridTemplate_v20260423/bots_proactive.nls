@@ -61,6 +61,9 @@ agentAs-own [
   humanRejectCount
   lastHumanReply
   lastHumanReplyPostId
+  contractRequestSent?
+  contractAgreeCount
+  contractRefuseCount
  ]
 
 ; Skapar den proaktiva huvudbotten och sätter alla startvärden.
@@ -90,6 +93,10 @@ to setup-agentAs
     set humanRejectCount 0
     set lastHumanReply "none"
     set lastHumanReplyPostId -1
+    
+    set contractRequestSent? false
+    set contractAgreeCount 0
+    set contractRefuseCount 0
 
     set agTimer1 nobody
     set agAlarm1 nobody
@@ -134,6 +141,7 @@ end
 ; om senaste post, aktiv post, viralitet och borttagning.
 to updateEnvironmentInfo_agentAs
   process-human-replies
+  update-contract-cycle
   
   set localxy patch-here
   set actionExecuted? false
@@ -158,6 +166,38 @@ to updateEnvironmentInfo_agentAs
     if [post-removed?] of activePost [
       set observedRemovedPost activePost
       set hasRemovedPost? true
+    ]
+  ]
+end
+
+
+
+; Skickar ett contract-request till reaktiva bottar.
+; De bottar som accepterar måste dela de kommande 10 posts,
+; men får halverad cooldown som belöning.
+to request-reactive-bot-contract
+  if not any? agentBs [ stop ]
+
+  set contractAgreeCount 0
+  set contractRefuseCount 0
+
+  let msg create-message "request"
+  set msg add-content (list "viral-contract" 10) msg
+  broadcast-to agentBs msg who
+
+  set contractRequestSent? true
+end
+
+
+; Kontrollerar om nuvarande contract-runda är över.
+; När alla svar har kommit in och inga agentBs längre har aktivt contract,
+; görs agentA redo att skicka ett nytt contract nästa gång.
+to update-contract-cycle
+  if contractRequestSent? [
+    if contractAgreeCount + contractRefuseCount >= count agentBs [
+      if not any? agentBs with [contract-active? = true] [
+        set contractRequestSent? false
+      ]
     ]
   ]
 end
@@ -356,6 +396,11 @@ to BotCreatePost
   ]
   set previousProState proState
 
+  ;; Skicka contract-request om ingen aktiv contract-runda finns
+  if not contractRequestSent? [
+    request-reactive-bot-contract
+  ]
+
   if activePost = nobody and selectedAction = "none" [
     set selectedAction "create-post"
     set createPostFlag true
@@ -364,7 +409,6 @@ to BotCreatePost
   set proState "EvaluateBotPost"
   set waitTicks 0
 end
-
 
 
 ; FSM-state: utvärderar den aktiva posten.
@@ -553,38 +597,43 @@ to-report post-color [extremity]
 end
 
 
-; Läser inkommande svar från humans efter att boten har skickat en request.
-; Humans kan svara med "agree" om de accepterar eller "refuse" om de avvisar.
-; Svaret sparas i botens variabler och visas även visuellt/debug i modellen.
+; Läser inkommande svar från humans och agentBs.
+; Humans kan svara agree/refuse på promote-post.
+; agentBs kan svara agree/refuse på viral-contract.
 to process-human-replies
-  ; Går igenom alla meddelanden i botens incoming-queue.
   while [not empty? incoming-queue] [
     let msg get-message
     let performative get-performative msg
     let content get-content msg
 
-    ;; Human accepterar botens request
-    if performative = "agree" [
-      if item 0 content = "promote-post" [
+    ;; Svar från reaktiva bottar på viral-contract
+    if item 0 content = "viral-contract" [
+      if performative = "agree" [
+        set contractAgreeCount contractAgreeCount + 1
+      ]
+
+      if performative = "refuse" [
+        set contractRefuseCount contractRefuseCount + 1
+      ]
+    ]
+
+    ;; Human accepterar botens promote-post request
+    if item 0 content = "promote-post" [
+      if performative = "agree" [
         set humanAcceptCount humanAcceptCount + 1
         set lastHumanReply "accepted"
         set lastHumanReplyPostId item 1 content
 
-        ;; debug / visualisering
         set color green
         set label (word "ACCEPT " humanAcceptCount)
         print (word "BOT GOT AGREE for post " lastHumanReplyPostId)
       ]
-    ]
 
-    ;; Human avvisar botens request
-    if performative = "refuse" [
-      if item 0 content = "promote-post" [
+      if performative = "refuse" [
         set humanRejectCount humanRejectCount + 1
         set lastHumanReply "rejected"
         set lastHumanReplyPostId item 1 content
 
-        ;; debug / visualisering
         set color red
         set label (word "REFUSE " humanRejectCount)
         print (word "BOT GOT REFUSE for post " lastHumanReplyPostId)
