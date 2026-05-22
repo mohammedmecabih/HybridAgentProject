@@ -282,8 +282,24 @@ to EvaluatePost
       set currentIntention "rejectBotsRequest"
     ]
     set proState "DelegateAction"
+    stop  
+  ]
+    if reportedMemory >= 6 and not agencyConfirmed? [
+
+  set currentIntention "requestAgency"
+
+  set proState "DelegateAction"
+
+  stop
+
+]
+      
+     if reportedMemory >= 4 and not sentAgencyInform? [
+    set currentIntention "informAgency"
+    set proState "DelegateAction"
     stop
   ]
+  
   if not postDetected or currentPost = nobody [
     set currentIntention "None"
     set selectedAction "none"
@@ -292,6 +308,7 @@ to EvaluatePost
   ]
   
 
+
   ;; först: reagera på själva inlägget
   if suspiciousFlag [
     set currentIntention "ReportPost"
@@ -299,12 +316,7 @@ to EvaluatePost
     stop
   ]
   
-  if reportedMemory >= 4 and not sentAgencyInform? [
-    set currentIntention "informAgency"
-    set proState "DelegateAction"
-    stop
-  ]
-  
+ 
 
   if veryInterestingFlag [
     set currentIntention "SharePost"
@@ -356,6 +368,9 @@ end
 
 to DelegateAction
   
+  if currentIntention = "requestAgency" [
+  set selectedAction "request-agency"
+]
   
   if currentIntention = "acceptBotsRequest" [
     set selectedAction "accept-bot-request"
