@@ -17,6 +17,13 @@
 ; 20260521  v2.8  Improved proactive FSM with memory and communication (Hamed)
 ;***************************************************************
 
+;***************************************************************
+;  Definiera alla egenskaper, tillstånd och minneskomponenter
+;        som används av Human‑agenten i modellen.
+;        Variablerna är grupperade efter funktion: beliefs, kommunikation,
+;        miljö, reaktiva flaggor, minne och proaktiva mål.
+;***************************************************************
+
 humans-own [
 
   ;Beliefs
@@ -92,7 +99,15 @@ humans-own [
   planQueue
 ]
 
-
+; PROCEDURE: setup-humans
+;***************************************************************
+; 
+;   Skapar och initierar Human‑agenter med alla nödvändiga variabler
+;   för beliefs, kommunikation, miljö, reaktiva flaggor, minne och
+;   proaktiva mål. Denna procedur används vid start av modellen och
+;   vid varje testsetup för att säkerställa att agenten börjar i ett
+;   neutralt och reproducerbart tillstånd.
+;
 to setup-humans
   create-humans Number_AgentA [
     set shape "person"
@@ -102,7 +117,7 @@ to setup-humans
 
     set vision 15
 
-    ;beliefs
+    ;beliefs-  agentens uppfattningar om inlägg och källor
     set postDetected false
     set postInteresting false
     set postVeryInteresting false
@@ -128,7 +143,7 @@ to setup-humans
     set reportFlag false
     set replyFlag false
     
-    ;för kommunikation 
+    ;för kommunikation– interaktion med bots och agencies
     set incoming-queue []
     set receivedBotsRequest? false 
     set lastBotsSender nobody
@@ -137,10 +152,10 @@ to setup-humans
     set agencyConfirmed? false
     set sentAgencyInform? false
 
-    ; shared
+    ; shared– gemensamma tillstånd mellan proaktiv och reaktiv logik
     set selectedAction "none"
 
-    ;proactive
+    ;proactive– mål, intentioner och planeringsstatus
     set currentGoal "None"
     set currentIntention "None"
     set proState "Scrolling"
@@ -154,6 +169,7 @@ to setup-humans
     set postRelevance 0
     
     ;Hamed skriv detta
+    ; lagring av tidigare handlingar och posttyper
     set likedMemory 0
     set sharedMemory 0
     set ignoredMemory 0
@@ -173,11 +189,20 @@ to setup-humans
   ]
 end
 
-
+;***************************************************************
+; PROCEDURE: updateEnvironmentInfo_humans
+;***************************************************************
+; 
+;   Uppdaterar Human‑agentens miljöinformation och reaktiva tillstånd
+;   baserat på synfältet (vision) och inlägg i närheten.
+;   Proceduren används varje tick för att simulera hur agenten
+;   upptäcker, bedömer och reagerar på nya inlägg i sin omgivning.
+;
 to updateEnvironmentInfo_humans
-  
+  ;; Hantera inkommande meddelanden (kommunikation med andra agenter)
   process-human-messages
   
+  ;; Uppdatera agentens lokala position
   set localxy patch-here
   
   
@@ -189,7 +214,7 @@ to updateEnvironmentInfo_humans
   set suspiciousFlag false
   set commentFlag false
   set currentPost nobody
-  ; TEMPORARY RANDOM LOGIC
+ ;; Identifiera nya inlägg inom synfältet som inte setts tidigare
   
   let unseenPosts posts in-radius vision with [not member? post-id [seenPostIds] of myself]
   if any? unseenPosts [
@@ -197,6 +222,8 @@ to updateEnvironmentInfo_humans
     set seenPostIds lput [post-id] of currentPost seenPostIds
     set postDetected true
     set currentPostType [post-topic] of currentPost
+    
+    ;; Bedöm inläggets extremitet och sätt reaktiva flaggor
   if [post-extremity] of currentPost >= 8 [
 
   if random 100 < 80 [ set suspiciousFlag true ]
@@ -214,6 +241,7 @@ if [post-extremity] of currentPost < 5 [
   if random 100 < 70 [ set interestingFlag true ]
 
 ]
+     ;; Slumpmässig chans att kommentera inlägget
     if random 100 < 10 [
       set commentFlag true
     ]
@@ -221,10 +249,18 @@ if [post-extremity] of currentPost < 5 [
   
       
 end
-
-;för ta emot meddelande från bots och bekräftelse från agency
+;***************************************************************
+; PROCEDURE: process-human-messages
+;***************************************************************
+; 
+;   Hanterar inkommande meddelanden till Human‑agenten från andra
+;   aktörer (Bots och Agency). Proceduren läser meddelanden från
+;   agentens inkommande kö, tolkar deras innehåll och uppdaterar
+;   relevanta variabler för kommunikationstillstånd.
+;
 
 to process-human-messages
+  ;; Loopa igenom alla meddelanden i kön tills den är tom
   while [not empty? incoming-queue] [
     let msg get-message
     let sender get-sender msg
@@ -240,7 +276,7 @@ to process-human-messages
       ]
     ]
     
-    ;agency bekräftelse 
+   ;; Agency bekräftar mottagen rapport
      
     if performative = "confirm" [
       if item 0 msgContent = "report-received" [
@@ -253,19 +289,37 @@ end
 
 
         
-    
-
-
+ ;***************************************************************
+; PROCEDURE: proactive_humans
+;***************************************************************
+;
+;   Hanterar Human‑agentens proaktiva beteende genom att köra den
+;   aktuella tillståndsproceduren som lagras i variabeln `proState`.
+;   Detta gör att agenten kan växla mellan olika proaktiva tillstånd
+;   (t.ex. Scrolling, EvaluatePost, DecideAction) beroende på situation.
+;   
 to proactive_humans
   run proState
 end
 
 
+;***************************************************************
+; PROCEDURE: Scrolling
+;***************************************************************
+; 
+;   Simulerar Human‑agentens beteende när den scrollar genom flödet
+;   och letar efter nya inlägg eller inkommande förfrågningar.
+;   Proceduren avgör om agenten ska gå vidare till att utvärdera ett
+;   inlägg baserat på om ett nytt inlägg har upptäckts eller om en
+;   bot har skickat en begäran.
+;
 to Scrolling
+   ;; Om agenten fått en begäran från en bot, börja utvärdera inlägget
   if receivedBotsRequest? [
     set proState "EvaluatePost"
     stop
   ]
+   ;; Om agenten har upptäckt ett nytt inlägg, börja utvärdera det
   if postDetected [
     set proState "EvaluatePost"
   ]
