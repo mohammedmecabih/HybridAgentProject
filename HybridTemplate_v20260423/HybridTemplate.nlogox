@@ -20,6 +20,7 @@
 ;; 20260505  v2.3  Updated go-loop to use 'ask turtles' instead of separate breed calls.
 ;                 This ensures all agents (humans, agentAs, agentBs, agencies) execute in random order each tick,
 ;                 as recommended by the teacher for more realistic ABM behaviour. (Mohammed & Hamed)
+;;;jag har ändrat för att testa
 ;********************end logbook ************************************************************************************************************************
 ;*********************************************************************************************************************************************************
 
