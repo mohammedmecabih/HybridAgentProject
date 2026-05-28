@@ -1,3 +1,4 @@
+
 ; Agency Proactive
 
 ;; Proactive agency FSM.
@@ -22,71 +23,30 @@ end
 
 
 to agency-monitoring
-  ;; Do not select new bot targets if the 10% setup-based limit is already reached.
-  if remaining-ban-slots <= 0 [ stop ]
+  ;; Leta efter virala posts som inte redan är borttagna.
+  ;; Viktigt: posts skapas av agentA, inte av agentB.
+let viral-posts posts with [
+  not post-removed? and
+  post-viral? and
+  post-shares >= viral-share-threshold and
+  post-likes >= viral-like-threshold and
+  not member? self [inspected-posts] of myself
+]
 
-  ;; Suspicious bots are bots that created at least one viral post with extremity 3-6.
-  ;; No color check here.
-  let potential-suspects agentBs with [
-    not hidden? and
-    not is-banned? and
-    not member? who [busy-bot-ids] of myself and
-    any? posts with [
-      post-origin = myself and
-      not post-removed? and
-      post-viral? and
-      post-shares >= viral-share-threshold and
-      post-likes >= viral-like-threshold and
-      post-extremity >= 3 and
-      post-extremity <= 6
-    ]
-  ]
+  if any? viral-posts [
+    let target max-one-of viral-posts [post-id]
 
-  if any? potential-suspects [
-    ;; Prefer the bot with most relevant viral posts in the 3-6 interval.
-    let suspect max-one-of potential-suspects [
-      count posts with [
-        post-origin = myself and
-        not post-removed? and
-        post-viral? and
-        post-shares >= viral-share-threshold and
-        post-likes >= viral-like-threshold and
-        post-extremity >= 3 and
-        post-extremity <= 6
-      ]
-    ]
-
-    set investigation-target suspect
+    set investigation-target target
     set investigation-ticks 0
     set proState_agency "Investigating"
 
-    ;; Mark locally so this agency does not select the same bot again while investigating.
-    if not member? [who] of suspect busy-bot-ids [
-      set busy-bot-ids lput [who] of suspect busy-bot-ids
-    ]
-
-    log-agency (word "AGENCY " who " | MONITORING: Found suspicious bot "
-      [who] of suspect ". Reason = viral post(s) with extremity 3-6.")
-    log-agency (word "AGENCY " who " | MONITORING: Ban slots left = "
-      remaining-ban-slots " / " max-bots-to-ban ".")
-
-    ;; FIPA style: inform other agencies that this bot is being investigated.
-    let msg create-message "inform"
-    set msg add-content (list "investigating" [who] of suspect) msg
-    broadcast-to agencies msg who
-
     log-agency (word "AGENCY " who
-      " | FIPA SENT inform to agencies: investigating bot " [who] of suspect ".")
-
-    ;; FIPA style: inform humans that agency started an investigation.
-    if any? humans [
-      let human-msg create-message "inform"
-      set human-msg add-content (list "agency-investigating-bot" [who] of suspect) human-msg
-      broadcast-to humans human-msg who
-
-      log-agency (word "AGENCY " who
-        " | FIPA SENT inform to humans: investigating bot " [who] of suspect ".")
-    ]
+      " | MONITORING: Found viral post P"
+      [post-id] of target
+      " origin=" [who] of [post-origin] of target
+      " shares=" [post-shares] of target
+      " likes=" [post-likes] of target
+      ".")
   ]
 end
 
@@ -98,15 +58,20 @@ to agency-investigating
     stop
   ]
 
-  ;; Do not ban immediately. Let the simulator run while agency investigates.
+  if [breed] of investigation-target != posts [
+    log-agency (word "AGENCY " who " | INVESTIGATING: target is not a post. Resetting.")
+    reset-agency-investigation
+    stop
+  ]
+
   set investigation-ticks investigation-ticks + 1
 
-  log-agency (word "AGENCY " who " | INVESTIGATING: bot "
-    [who] of investigation-target " tick " investigation-ticks " / 5.")
+  log-agency (word "AGENCY " who
+    " | INVESTIGATING: post P"
+    [post-id] of investigation-target
+    " tick " investigation-ticks " / 3.")
 
-  if investigation-ticks >= 5 [
-    log-agency (word "AGENCY " who " | INVESTIGATING: finished investigation of bot "
-      [who] of investigation-target ". Moving to DECIDING.")
+  if investigation-ticks >= 3 [
     set proState_agency "Deciding"
   ]
 end
@@ -114,25 +79,27 @@ end
 
 to agency-deciding
   if not is-agent? investigation-target [
-    log-agency (word "AGENCY " who " | DECIDING: target no longer exists. Resetting.")
     reset-agency-investigation
     stop
   ]
 
-  log-agency (word "AGENCY " who " | DECIDING: evaluating bot "
-    [who] of investigation-target ".")
-
-  ifelse remaining-ban-slots > 0 and is-suspicious-bot? investigation-target [
-    set delegated-action "ban-one-suspicious-bot"
-    log-agency (word "AGENCY " who " | DECIDING: decision = BAN bot "
-      [who] of investigation-target ".")
-  ] [
-    set delegated-action "warn"
-    log-agency (word "AGENCY " who " | DECIDING: decision = WATCH bot "
-      [who] of investigation-target ".")
+  if [breed] of investigation-target != posts [
+    reset-agency-investigation
+    stop
   ]
 
-  set delegated-target investigation-target
+  ifelse [post-viral?] of investigation-target and not [post-removed?] of investigation-target [
+    set delegated-action "remove-viral-post"
+    set delegated-target investigation-target
+
+    log-agency (word "AGENCY " who
+      " | DECIDING: decision = REMOVE post P"
+      [post-id] of investigation-target ".")
+  ] [
+    set delegated-action "none"
+    set delegated-target nobody
+  ]
+
   set has-delegation? true
   set proState_agency "Reporting"
 end
@@ -156,128 +123,67 @@ to execute-delegation
     stop
   ]
 
-  if delegated-action = "ban-one-suspicious-bot" [
-    if remaining-ban-slots <= 0 [
-      log-agency (word "AGENCY " who ": Ban limit reached. Total banned: "
-        total-banned-bots " / " max-bots-to-ban)
-      set delegated-action "none"
-      set has-delegation? false
-      stop
-    ]
-
-    ;; Rebuild eligible targets at execution time so stale targets are not banned.
-    ;; The bot must still be alive, not banned, and have at least one viral post with extremity 3-6.
-    let targets agentBs with [
-      not hidden? and
-      not is-banned? and
-      any? posts with [
-        post-origin = myself and
-        not post-removed? and
-        post-viral? and
-        post-shares >= viral-share-threshold and
-        post-likes >= viral-like-threshold and
-        post-extremity >= 3 and
-        post-extremity <= 6
-      ]
-    ]
-
-    if any? targets [
-      let chosen nobody
-
-      ;; Prefer the bot already investigated if it is still valid.
-      if is-suspicious-bot? delegated-target [
-        set chosen delegated-target
-      ]
-
-      if chosen = nobody [
-        set chosen one-of targets
-      ]
-
-      let chosen-id [who] of chosen
-
-      ;; Remove only this bot's relevant viral posts before killing the bot.
-      let relevant-posts posts with [
-        post-origin = chosen and
-        not post-removed? and
-        post-viral? and
-        post-shares >= viral-share-threshold and
-        post-likes >= viral-like-threshold and
-        post-extremity >= 3 and
-        post-extremity <= 6
-      ]
-
-      let removed-post-ids sort [post-id] of relevant-posts
-
-      log-agency (word "AGENCY " who " | BAN: banning bot " chosen-id
-        ". Removed relevant posts = " removed-post-ids
-        ". Total banned after this = " (total-banned-bots + 1) " / " max-bots-to-ban ".")
-
-      ask relevant-posts [
-        set post-removed? true
-        set post-viral? false
-        set post-shares 0
-        set post-likes 0
-        set label "REMOVED"
-        set size 0
-        hide-turtle
-      ]
-
-      ask chosen [
-        set is-banned? true
-        set label "BANNED"
-        hide-turtle
-        die
-      ]
-
-      set bans-issued bans-issued + 1
-      set busy-bot-ids remove chosen-id busy-bot-ids
-
-      ;; FIPA style: inform humans about the ban result.
-      if any? humans [
-        let msg create-message "inform"
-        set msg add-content (list "bot-banned" chosen-id removed-post-ids) msg
-        broadcast-to humans msg who
-
-        log-agency (word "AGENCY " who
-          " | FIPA SENT inform to humans: bot " chosen-id
-          " was banned. Removed posts = " removed-post-ids ".")
-      ]
-
-      ;; FIPA style: inform other agencies about the ban result.
-      if any? other agencies [
-        let agency-msg create-message "inform"
-        set agency-msg add-content (list "bot-banned" chosen-id removed-post-ids) agency-msg
-        broadcast-to agencies agency-msg who
-
-        log-agency (word "AGENCY " who
-          " | FIPA SENT inform to agencies: bot " chosen-id " was banned.")
-      ]
-    ]
-  ]
-
-  if delegated-action = "warn" [
+    if delegated-action = "remove-viral-post" [
     if is-agent? delegated-target [
-      let watched-id [who] of delegated-target
+      if [breed] of delegated-target = posts [
+        let target-post delegated-target
+        let target-post-id [post-id] of target-post
+        let slump-tal (random 100) + 1
+        
+        if not member? target-post inspected-posts [
+        set inspected-posts lput target-post inspected-posts
+         ]
 
-      ask delegated-target [
-        set label "WATCHED"
-      ]
+        ifelse slump-tal <= 50 [
+          ask target-post [
+            set post-removed? true
+            set post-viral? false
+            set post-shares 0
+            set post-likes 0
+            set label "REMOVED"
+            set size 0
+            hide-turtle
+          ]
 
-      set corrections-published corrections-published + 1
+          set corrections-published corrections-published + 1
 
-      ;; FIPA style: inform humans about the watch decision.
-      if any? humans [
-        let msg create-message "inform"
-        set msg add-content (list "bot-watched" watched-id) msg
-        broadcast-to humans msg who
+          log-agency (word "AGENCY " who
+            " | PROACTIVE DECISION: post P" target-post-id
+            " roll=" slump-tal
+            " -> REMOVED.")
 
-        log-agency (word "AGENCY " who
-          " | FIPA SENT inform to humans: bot " watched-id " was watched, not banned.")
+          if any? humans [
+            let msg create-message "inform"
+            set msg add-content (list "post-removed" target-post-id) msg
+            broadcast-to humans msg who
+          ]
+        ] [
+          ask target-post [
+            set label "RELEASED"
+          ]
+
+          log-agency (word "AGENCY " who
+            " | PROACTIVE DECISION: post P" target-post-id
+            " roll=" slump-tal
+            " -> RELEASED.")
+
+          if any? humans [
+            let msg create-message "inform"
+            set msg add-content (list "post-released" target-post-id) msg
+            broadcast-to humans msg who
+          ]
+        ]
       ]
     ]
+
+    set delegated-action "none"
+    set delegated-target nobody
+    set has-delegation? false
+    stop
   ]
 
   set delegated-action "none"
+  set delegated-target nobody
   set has-delegation? false
 end
 

@@ -1,4 +1,5 @@
 
+;***************************************************************
 ; LOGBOOK OF UPDATES IN THIS FILE
 ; --Date--- |----Description-----------------------------------
 ; 20260428  v2.1  Adjusted reactive behaviors to use variables defined in proactive file (Mohammed)
@@ -14,6 +15,7 @@
 ; 20260521  v2.6  Improved accept-bot-request to include like and share behavior (Hamed)
 ; 20260521  v2.6  Fixed post selection using requestedPostId in accept-bot-request (Hamed)
 ; 20260521  v2.7  Cleaned reactive logic and ensured single action execution (Hamed)
+; 20260528  v2.8  Human report-post now sends a separate request to agency for post investigation
 ;***************************************************************
 
 
@@ -24,11 +26,8 @@ to reactive_humans
   set ignoreFlag false
   set reportFlag false
   set replyFlag false
-  
-  
-  
-  ;; 1. Mohammed v2.4 — Proactive communication actions
-  
+
+  ;; Proactive communication actions
 
   if selectedAction = "broadcast-warning" [
     broadcast-warning
@@ -53,20 +52,21 @@ to reactive_humans
     set selectedAction "none"
     stop
   ]
-  
+
   if selectedAction = "reject-bot-request" [
     reject-bot-request
     set selectedAction "none"
     stop
   ]
-  
+
   if selectedAction = "inform-agency" [
-  inform-agency
-  set selectedAction "none"
-  stop
+    inform-agency
+    set selectedAction "none"
+    stop
   ]
-  
-  ; proactive override
+
+  ;; Reactive actions from proactive intention
+
   if selectedAction = "share" [
     share-post
     update-memory
@@ -101,162 +101,212 @@ to reactive_humans
     stop
   ]
 
-  ; fallback reactive logic
+  ;; Fallback reactive logic
+
   if suspiciousFlag [
     report-post
     stop
   ]
+
   if veryInterestingFlag [
     share-post
     stop
   ]
+
   if interestingFlag [
     like-post
     stop
   ]
+
   if commentFlag [
     reply-to-comment
     stop
   ]
 
   if postDetected and currentPost != nobody [
-  ignore-post
-]
+    ignore-post
+  ]
+
 end
-to accept-bot-request 
+
+
+to accept-bot-request
+  ;; Human accepts a bot request to promote a post.
+  ;; This only concerns communication between human and bot.
+  ;; Agency is not involved here.
+
   let msg create-message "agree"
   set msg add-receiver lastBotsSender msg
   set msg add-content (list "promote-post" requestedPostId) msg
   send msg
-  
-  ;; 2. Hitta posten som boten vill promota
+
   let reqId requestedPostId
   let promotedPost one-of posts with [post-id = reqId]
-  ;; 3. Om posten finns → like + share
-  if promotedPost != nobody [
+
+  if is-agent? promotedPost [
     ask promotedPost [
       set post-likes post-likes + 1
       set post-shares post-shares + 1
     ]
 
-    ;; uppdatera globala metrics
     set totalShares totalShares + 1
     set viralTrend viralTrend + 1
-    
+
     set likedMemory likedMemory + 1
     set sharedMemory sharedMemory + 1
     set likedPostTypes lput requestedPostTopic likedPostTypes
     set sharedPostTypes lput requestedPostTopic sharedPostTypes
-
   ]
-  ;human hjälper till att sprida inlägg
-  set color green 
-  
+
+  ;; Human helps spread the post.
+  set color green
+
   set receivedBotsRequest? false
   set requestedPostId -1
   set requestedPostTopic "none"
   set lastBotsSender nobody
-
 end
 
-to reject-bot-request 
+
+to reject-bot-request
+  ;; Human refuses a bot request to promote a post.
+  ;; Agency is not involved here.
+
+  let rejectedPostId requestedPostId
+
   let msg create-message "refuse"
   set msg add-receiver lastBotsSender msg
-  set msg add-content (list "promote-post" requestedPostId) msg
+  set msg add-content (list "promote-post" rejectedPostId) msg
   send msg
-   
-  
+
   set receivedBotsRequest? false
   set requestedPostId -1
   set requestedPostTopic "none"
   set lastBotsSender nobody
-
 end
 
+
 to inform-agency
+  ;; Human sends information to agency.
+  ;; Agency should answer with a confirm message.
+
   if any? agencies [
     let target one-of agencies
+
     let msg create-message "inform"
     set msg add-receiver [who] of target msg
     set msg add-content (list "suspicious-topic" currentPostType reportedMemory) msg
     send msg
+
+    print (word "HUMAN " who
+      " | FIPA SENT inform to agency " [who] of target
+      ": suspicious-topic " currentPostType
+      " reportedMemory=" reportedMemory)
 
     set sentAgencyInform? true
     set color orange
   ]
 end
 
-to like-post 
-  set color blue
-  if currentPost != nobody [
-    ask currentPost [
-      set post-likes post-likes + 1
-    ]
+
+to request-agency
+  ;; Human sends a separate request to agency.
+  ;; This happens when the human reports a post.
+  ;; The request contains the exact post-id.
+
+  if currentPost = nobody [ stop ]
+
+  if any? agencies [
+    let target one-of agencies
+    let requested-id [post-id] of currentPost
+
+    let msg create-message "request"
+    set msg add-receiver [who] of target msg
+    set msg add-content (list "investigate-post" requested-id) msg
+    send msg
+
+    print (word "HUMAN " who
+      " | FIPA SENT request to agency " [who] of target
+      ": investigate-post P" requested-id)
+
+    set color cyan
   ]
-  
 end
 
 
-; Mohammed v2.4 — Broadcast and Request Functions
 to broadcast-warning
-  ;; Skickar varning till andra humans och agency i närheten
+  ;; Sends a warning to nearby humans and nearby agencies.
+
   let nearbyAgents (turtle-set (other humans in-radius 10) (agencies in-radius 10))
-  foreach nearbyAgents [agent ->
+
+  foreach sort nearbyAgents [agent ->
     let msg create-message "inform"
     set msg add-receiver [who] of agent msg
     set msg add-content (list "warning" currentPostType) msg
     send msg
   ]
+
   set color orange
 end
 
+
 to broadcast-share
-  ;; Delar intressant inlägg med andra humans och agency i närheten
+  ;; Shares an interesting post with nearby humans and nearby agencies.
+
   let nearbyAgents (turtle-set (other humans in-radius 10) (agencies in-radius 10))
-  foreach nearbyAgents [agent ->
+
+  foreach sort nearbyAgents [agent ->
     let msg create-message "inform"
     set msg add-receiver [who] of agent msg
     set msg add-content (list "interesting-post" currentPostType) msg
     send msg
   ]
+
   set color green
 end
 
-to request-agency
-  ;; Ber myndigheten att utreda ett specifikt inlägg eller användare
-  if any? agencies [
-    let target one-of agencies
-    let msg create-message "request"
-    set msg add-receiver [who] of target msg
-    set msg add-content (list "investigate-post" currentPostType) msg
-    send msg
-    set color cyan
+
+to like-post
+  set color blue
+
+  if currentPost != nobody [
+    ask currentPost [
+      set post-likes post-likes + 1
+    ]
   ]
 end
-
 
 
 to share-post
   set color green
   set totalShares totalShares + 1
   set viralTrend viralTrend + 1
+
   if currentPost != nobody [
     ask currentPost [
       set post-shares post-shares + 1
     ]
   ]
-  
 end
 
-to ignore-post 
+
+to ignore-post
   set color gray
 end
 
+
 to report-post
+  ;; Human reports the current post.
+  ;; Reporting a post triggers a separate agency request.
+  ;; This has nothing to do with accepting or refusing bot requests.
+
   set color red
   set numberOfReports numberOfReports + 1
   set viralTrend viralTrend - 1
+
+  request-agency
 end
+
 
 to reply-to-comment
   set color yellow

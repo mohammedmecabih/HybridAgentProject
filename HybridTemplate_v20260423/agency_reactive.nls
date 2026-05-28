@@ -1,4 +1,3 @@
-; Agency Reactive
 
 ;; Reactive agency layer:
 ;; 1. Handles incoming FIPA-like messages once per agency tick.
@@ -6,70 +5,83 @@
 ;; 3. Inspects each post-agent exactly once, not each bot.
 ;; 4. If the same bot creates a new viral 3-6 post later, that new post is inspected too.
 ;; 5. Removes 70% of inspected viral 3-6 posts and releases 30%.
-;; 6. Uses project variables only, never display color.
+;; 6. Human-request inspections can inspect posts outside 3-6.
+;; 7. Human-request decisions use 10% remove and 90% release.
+;; 8. Human-request decisions are stored per post-id and reused for later requests.
+
 
 to update-agency-reactive
-  ;; Communication must be handled before reactive post scanning.
   handle-agency-messages
 
-  ;; Keep only existing post agents in memory.
-  ;; Released posts stay here so they are not inspected twice.
   set inspected-posts filter [p -> is-agent? p] inspected-posts
 
-  ;; Target only viral posts in the required extremity interval by variables.
-  ;; Do NOT use color. Color is only the visual result elsewhere in the model.
-  let targets posts with [
-    not post-removed? and
-    post-viral? and
-    post-shares >= viral-share-threshold and
-    post-likes >= viral-like-threshold and
-    post-extremity >= 3 and
-    post-extremity <= 6 and
-    not member? self [inspected-posts] of myself
-  ]
-
-  if any? targets [
-    ;; Inspect the newest eligible post first.
-    ;; A new post from the same bot is a different post-agent and can therefore be inspected.
-    let selected-target max-one-of targets [post-id]
-    face selected-target
-
-    ifelse distance selected-target > 1.5 [
-      ifelse can-move? 0.5 [ fd 0.5 ] [ rt 180 ]
-    ] [
-      ;; Inspect only when the house reaches the post.
-      inspect-extreme-post selected-target
+  if is-agent? current-post-target [
+    if not valid-agency-post-target? current-post-target [
+      set current-post-target nobody
     ]
+  ]
+
+  if not is-agent? current-post-target [
+    let targets posts with [
+      not post-removed? and
+      post-viral? and
+      post-shares >= viral-share-threshold and
+      post-likes >= viral-like-threshold and
+      post-extremity >= 3 and
+      post-extremity <= 6 and
+      not member? self [inspected-posts] of myself
+    ]
+
+    if any? targets [
+      set current-post-target max-one-of targets [post-id]
+
+      log-agency (word "AGENCY " who
+        " | TARGET FOUND: moving to post P" [post-id] of current-post-target
+        " extremity=" [post-extremity] of current-post-target
+        " shares=" [post-shares] of current-post-target
+        " likes=" [post-likes] of current-post-target ".")
+    ]
+  ]
+
+  if is-agent? current-post-target [
+    face current-post-target
+
+    let agency-speed 0.25
+
+    ifelse distance current-post-target > 1.5 [
+      face current-post-target
+
+      ifelse can-move? agency-speed [
+        fd agency-speed
+      ] [
+        rt 30
+      ]
+    ] [
+      inspect-extreme-post current-post-target
+      set current-post-target nobody
+    ]
+
     stop
   ]
 
-  ;; If there is no post target, still move while proactive agency investigates a bot.
-  if is-agent? investigation-target [
-    face investigation-target
-    ifelse can-move? 0.5 [ fd 0.5 ] [ rt 180 ]
-    stop
-  ]
-
-  ;; Fallback movement so the agency does not look frozen between targets.
   agency-search-movement
 end
 
 
 to agency-search-movement
   rt ((random 61) - 30)
+
   ifelse can-move? 0.35 [
     fd 0.35
   ] [
     rt 180
-    if can-move? 0.35 [ fd 0.35 ]
+    if can-move? 0.35 [
+      fd 0.35
+    ]
   ]
 end
 
 
-;; Writes the same agency communication log to both:
-;; 1. NetLogo Output widget through output-print
-;; 2. Command Center / terminal through print
-;; This makes FIPA communication visible even when only terminal prints are shown.
 to log-agency [message-text]
   output-print message-text
   print message-text
@@ -87,23 +99,24 @@ to handle-agency-messages
     let content get-content incoming-msg
     let msg-sender get-sender incoming-msg
 
-    log-agency (word "AGENCY " who " | FIPA RECEIVED: sender=" msg-sender
-      " performative=" performative " content=" content)
+    log-agency (word "AGENCY " who
+      " | FIPA RECEIVED: sender=" msg-sender
+      " performative=" performative
+      " content=" content)
 
-    ;; Coordination between agencies: another agency has claimed a bot.
-    ;; FIPA style: inform ["investigating" bot-id]
     if is-list? content and length content >= 2 and item 0 content = "investigating" [
       let busy-bot-id item 1 content
 
       if is-number? busy-bot-id and turtle busy-bot-id != nobody [
         if not member? busy-bot-id busy-bot-ids [
           set busy-bot-ids lput busy-bot-id busy-bot-ids
-          log-agency (word "AGENCY " who " | COORDINATION: bot " busy-bot-id
+
+          log-agency (word "AGENCY " who
+            " | COORDINATION: bot " busy-bot-id
             " marked busy because another agency is investigating it.")
         ]
       ]
 
-      ;; If this agency is working on the same bot, stop and let the first agency continue.
       if is-agent? investigation-target and [who] of investigation-target = busy-bot-id [
         if member? proState_agency ["Monitoring" "Investigating"] [
           set investigation-target nobody
@@ -112,56 +125,106 @@ to handle-agency-messages
           set delegated-action "none"
           set has-delegation? false
           set proState_agency "Monitoring"
-          log-agency (word "AGENCY " who " | COORDINATION: stopped own investigation of bot "
-            busy-bot-id " because agency " msg-sender " already handles it.")
+
+          log-agency (word "AGENCY " who
+            " | COORDINATION: stopped own investigation of bot "
+            busy-bot-id
+            " because agency " msg-sender
+            " already handles it.")
         ]
       ]
     ]
 
-    ;; Request from humans: human asks agency to investigate a post.
-    ;; FIPA style: request -> confirm/refuse.
-    if performative = "request" and is-list? content [
-      if length content >= 2 and item 0 content = "investigate-post" [
+    if performative = "request" [
+      let sender-agent sender-as-agent msg-sender
+      let sender-is-human? false
 
-        let requested-value item 1 content
-        let requested-post resolve-requested-post requested-value
+      if is-agent? sender-agent [
+        if [breed] of sender-agent = humans [
+          set sender-is-human? true
+        ]
+      ]
 
-        ifelse is-agent? requested-post [
-          let reply create-message "confirm"
-          set reply add-receiver msg-sender reply
-          set reply add-content (list "report-received" requested-value [post-id] of requested-post) reply
-          send reply
+      if sender-is-human? [
+        let reply create-message "confirm"
+        set reply add-receiver msg-sender reply
+        set reply add-content (list "request-received" content) reply
+        send reply
 
-          log-agency (word "AGENCY " who " | FIPA SENT confirm to human "
-            msg-sender " for requested value " requested-value
-            " resolved to post P" [post-id] of requested-post ".")
+        log-agency (word "AGENCY " who
+          " | FIPA SENT confirm to human " msg-sender
+          ": request received.")
+
+        ifelse is-list? content and length content >= 2 and item 0 content = "investigate-post" [
+          let requested-value item 1 content
+
+          let old-decision get-human-request-decision requested-value
+
+          ifelse old-decision != false [
+            send-stored-human-request-result msg-sender old-decision
+
+            log-agency (word "AGENCY " who
+              " | HUMAN REQUEST RESULT: reused stored decision for post P"
+              requested-value ".")
+          ] [
+            let requested-post resolve-requested-post requested-value sender-agent
+
+            ifelse is-agent? requested-post [
+              inspect-human-request-post requested-post msg-sender
+            ] [
+              let result-msg create-message "inform"
+              set result-msg add-receiver msg-sender result-msg
+              set result-msg add-content
+                (list "investigation-complete" "post-not-found" requested-value)
+                result-msg
+              send result-msg
+
+              log-agency (word "AGENCY " who
+                " | FIPA SENT inform to human " msg-sender
+                ": investigation complete, no valid post found for "
+                requested-value ".")
+            ]
+          ]
         ] [
-          let reply create-message "refuse"
-          set reply add-receiver msg-sender reply
-          set reply add-content (list "cannot-investigate" requested-value) reply
-          send reply
+          let result-msg create-message "inform"
+          set result-msg add-receiver msg-sender result-msg
+          set result-msg add-content
+            (list "investigation-complete" "unsupported-request" content)
+            result-msg
+          send result-msg
 
-          log-agency (word "AGENCY " who " | FIPA SENT refuse to human "
-            msg-sender " because no valid viral 3-6 post matched " requested-value ".")
+          log-agency (word "AGENCY " who
+            " | FIPA SENT inform to human " msg-sender
+            ": unsupported request.")
         ]
       ]
     ]
 
-    ;; Inform from humans: human warns agency about suspicious content.
-    ;; FIPA style: inform -> confirm.
-    if performative = "inform" and is-list? content [
-      if not empty? content [
-        if item 0 content = "suspicious-topic" or item 0 content = "warning" [
-          set numberOfReports numberOfReports + 1
+    if performative = "inform" [
+      let sender-agent sender-as-agent msg-sender
+      let sender-is-human? false
 
-          let reply create-message "confirm"
-          set reply add-receiver msg-sender reply
-          set reply add-content (list "inform-received" item 0 content) reply
-          send reply
-
-          log-agency (word "AGENCY " who " | FIPA SENT confirm to human "
-            msg-sender ". numberOfReports=" numberOfReports ".")
+      if is-agent? sender-agent [
+        if [breed] of sender-agent = humans [
+          set sender-is-human? true
         ]
+      ]
+
+      if sender-is-human? [
+        if is-list? content and not empty? content [
+          if item 0 content = "suspicious-topic" or item 0 content = "warning" [
+            set numberOfReports numberOfReports + 1
+          ]
+        ]
+
+        let reply create-message "confirm"
+        set reply add-receiver msg-sender reply
+        set reply add-content (list "inform-received" content) reply
+        send reply
+
+        log-agency (word "AGENCY " who
+          " | FIPA SENT confirm to human " msg-sender
+          ": inform received. numberOfReports=" numberOfReports ".")
       ]
     ]
 
@@ -173,8 +236,6 @@ end
 to inspect-extreme-post [target]
   if not is-agent? target [ stop ]
 
-  ;; Safety check: inspect/remove only viral posts in extremity interval 3-6.
-  ;; This uses variables only, not color.
   if [post-removed?] of target [ stop ]
   if not [post-viral?] of target [ stop ]
   if [post-shares] of target < viral-share-threshold [ stop ]
@@ -182,14 +243,12 @@ to inspect-extreme-post [target]
   if [post-extremity] of target < 3 [ stop ]
   if [post-extremity] of target > 6 [ stop ]
 
-  ;; Critical rule: every inspected post-agent is recorded exactly once.
-  ;; This happens before the chance decision, so released posts are not inspected again.
-  ;; A new post from the same bot has a new post agent/id, so it will still be inspected.
   if not member? target inspected-posts [
     set inspected-posts lput target inspected-posts
   ]
 
-  log-agency (word "AGENCY " who " | POST INSPECTION: post P" [post-id] of target
+  log-agency (word "AGENCY " who
+    " | POST INSPECTION: post P" [post-id] of target
     " origin=" [who] of [post-origin] of target
     " shares=" [post-shares] of target
     " likes=" [post-likes] of target
@@ -197,12 +256,13 @@ to inspect-extreme-post [target]
 
   let slump-tal (random 100) + 1
 
-  ;; 70% removal, 30% release.
-  ifelse slump-tal <= 70 [
+  ifelse slump-tal <= 50 [
     let removed-post-id [post-id] of target
 
-    log-agency (word "AGENCY " who " | DECISION: post P" removed-post-id
-      " roll=" slump-tal " -> REMOVED.")
+    log-agency (word "AGENCY " who
+      " | DECISION: post P" removed-post-id
+      " roll=" slump-tal
+      " -> REMOVED.")
 
     ask target [
       set post-removed? true
@@ -216,71 +276,169 @@ to inspect-extreme-post [target]
 
     set corrections-published corrections-published + 1
 
-    ;; FIPA style: inform humans about moderation result.
     if any? humans [
       let msg create-message "inform"
       set msg add-content (list "post-removed" removed-post-id) msg
       broadcast-to humans msg who
 
       log-agency (word "AGENCY " who
-        " | FIPA SENT inform to humans: post P" removed-post-id " was removed.")
+        " | FIPA SENT inform to humans: post P"
+        removed-post-id
+        " was removed.")
     ]
 
     display
   ] [
     let released-post-id [post-id] of target
 
-    log-agency (word "AGENCY " who " | DECISION: post P" released-post-id
-      " roll=" slump-tal " -> RELEASED.")
+    log-agency (word "AGENCY " who
+      " | DECISION: post P" released-post-id
+      " roll=" slump-tal
+      " -> RELEASED.")
 
-    ;; The post remains visible, but it is already in inspected-posts.
-    ;; Therefore it will not be inspected again during the simulation.
     ask target [
       set label "RELEASED"
     ]
 
-    ;; FIPA style: inform humans about moderation result.
     if any? humans [
       let msg create-message "inform"
       set msg add-content (list "post-released" released-post-id) msg
       broadcast-to humans msg who
 
       log-agency (word "AGENCY " who
-        " | FIPA SENT inform to humans: post P" released-post-id " was released.")
+        " | FIPA SENT inform to humans: post P"
+        released-post-id
+        " was released.")
     ]
 
     rt 90
-    if can-move? 0.4 [ fd 0.4 ]
+    if can-move? 0.4 [
+      fd 0.4
+    ]
   ]
 end
 
 
-to-report resolve-requested-post [requested-value]
-  ;; If the human sent a post-id, find that exact post.
+to inspect-human-request-post [target requester-id]
+  if not is-agent? target [ stop ]
+  if [breed] of target != posts [ stop ]
+  if [post-removed?] of target [ stop ]
+
+  ;; Ingen 3-6-spärr här.
+  ;; Human-request får utreda även posts utanför 3-6.
+  ;; Viktigt: human-request ska inte lägga posten i inspected-posts.
+  ;; inspected-posts används bara av automatiska 3-6-systemet.
+
+  let target-post-id [post-id] of target
+  let target-extremity [post-extremity] of target
+
+  log-agency (word "AGENCY " who
+    " | HUMAN REQUEST INSPECTION: post P" target-post-id
+    " topic=" [post-topic] of target
+    " extremity=" target-extremity
+    " shares=" [post-shares] of target
+    " likes=" [post-likes] of target ".")
+
+  let decision random 100
+
+  ifelse decision < 10 [
+    log-agency (word "AGENCY " who
+      " | HUMAN REQUEST DECISION: post P" target-post-id
+      " extremity=" target-extremity
+      " roll=" decision
+      " -> REMOVED.")
+
+    ask target [
+      set post-removed? true
+      set post-viral? false
+      set post-shares 0
+      set post-likes 0
+      set label "REMOVED"
+      set size 0
+      hide-turtle
+    ]
+
+    set corrections-published corrections-published + 1
+
+    if get-human-request-decision target-post-id = false [
+      set human-request-decisions
+        (lput (list target-post-id "post-removed" target-extremity)
+        human-request-decisions)
+    ]
+
+    let result-msg create-message "inform"
+    set result-msg add-receiver requester-id result-msg
+    set result-msg add-content
+      (list "investigation-complete" "post-removed" target-post-id target-extremity)
+      result-msg
+    send result-msg
+
+    log-agency (word "AGENCY " who
+      " | FIPA SENT inform to human " requester-id
+      ": investigation complete, post P"
+      target-post-id
+      " removed.")
+  ] [
+    log-agency (word "AGENCY " who
+      " | HUMAN REQUEST DECISION: post P" target-post-id
+      " extremity=" target-extremity
+      " roll=" decision
+      " -> RELEASED.")
+
+    ask target [
+      set label "RELEASED"
+    ]
+
+    if get-human-request-decision target-post-id = false [
+      set human-request-decisions
+        (lput (list target-post-id "post-released" target-extremity)
+        human-request-decisions)
+    ]
+
+    let result-msg create-message "inform"
+    set result-msg add-receiver requester-id result-msg
+    set result-msg add-content
+      (list "investigation-complete" "post-released" target-post-id target-extremity)
+      result-msg
+    send result-msg
+
+    log-agency (word "AGENCY " who
+      " | FIPA SENT inform to human " requester-id
+      ": investigation complete, post P"
+      target-post-id
+      " released.")
+  ]
+end
+
+
+to-report resolve-requested-post [requested-value sender-human]
   if is-number? requested-value [
     let exact-post one-of posts with [
       post-id = requested-value and
-      not post-removed? and
-      post-viral? and
-      post-shares >= viral-share-threshold and
-      post-likes >= viral-like-threshold and
-      post-extremity >= 3 and
-      post-extremity <= 6
+      not post-removed?
     ]
 
-    if is-agent? exact-post [ report exact-post ]
+    if is-agent? exact-post [
+      report exact-post
+    ]
   ]
 
-  ;; If the human sent a topic instead of post-id, find newest matching viral 3-6 post.
+  if is-agent? sender-human [
+    if [breed] of sender-human = humans [
+      let sender-post [currentPost] of sender-human
+
+      if is-agent? sender-post [
+        if [breed] of sender-post = posts and not [post-removed?] of sender-post [
+          report sender-post
+        ]
+      ]
+    ]
+  ]
+
   if is-string? requested-value [
     let topic-posts posts with [
       post-topic = requested-value and
-      not post-removed? and
-      post-viral? and
-      post-shares >= viral-share-threshold and
-      post-likes >= viral-like-threshold and
-      post-extremity >= 3 and
-      post-extremity <= 6
+      not post-removed?
     ]
 
     if any? topic-posts [
@@ -289,4 +447,80 @@ to-report resolve-requested-post [requested-value]
   ]
 
   report nobody
+end
+
+
+to-report get-human-request-decision [requested-post-id]
+  if not is-number? requested-post-id [
+    report false
+  ]
+
+  let found-decision false
+
+  foreach human-request-decisions [decision-record ->
+    if found-decision = false [
+      if item 0 decision-record = requested-post-id [
+        set found-decision decision-record
+      ]
+    ]
+  ]
+
+  report found-decision
+end
+
+
+to send-stored-human-request-result [receiver-id decision-record]
+  let saved-post-id item 0 decision-record
+  let saved-result item 1 decision-record
+  let saved-extremity item 2 decision-record
+
+  let result-msg create-message "inform"
+  set result-msg add-receiver receiver-id result-msg
+  set result-msg add-content
+    (list "investigation-complete" saved-result saved-post-id saved-extremity)
+    result-msg
+  send result-msg
+end
+
+
+to-report sender-as-agent [sender-value]
+  if is-number? sender-value [
+    if turtle sender-value != nobody [
+      report turtle sender-value
+    ]
+  ]
+
+  if is-string? sender-value [
+    let parsed nobody
+
+    carefully [
+      set parsed read-from-string sender-value
+    ] [
+      set parsed nobody
+    ]
+
+    if is-number? parsed [
+      if turtle parsed != nobody [
+        report turtle parsed
+      ]
+    ]
+  ]
+
+  report nobody
+end
+
+
+to-report valid-agency-post-target? [p]
+  if not is-agent? p [ report false ]
+  if [breed] of p != posts [ report false ]
+
+  if [post-removed?] of p [ report false ]
+  if not [post-viral?] of p [ report false ]
+  if [post-shares] of p < viral-share-threshold [ report false ]
+  if [post-likes] of p < viral-like-threshold [ report false ]
+  if [post-extremity] of p < 3 [ report false ]
+  if [post-extremity] of p > 6 [ report false ]
+  if member? p inspected-posts [ report false ]
+
+  report true
 end
