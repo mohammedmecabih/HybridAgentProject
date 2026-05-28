@@ -208,7 +208,7 @@ end
 ; OUTPUT WIDGET
 
 to update-post-ranking-output
-  clear-output
+  ;clear-output
 
   output-print "Ranking by shares"
   output-print "-----------------"
