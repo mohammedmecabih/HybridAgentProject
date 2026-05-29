@@ -17,7 +17,9 @@
 ; 20260428  v2.0  Integrated proactive and reactive human agent into hybrid architecture (Mohammed och Hamed)
 ; 20260428  v2.1  Added test case execution using activateTestCase switch (Mohammed och Hamed)
 ; 20260428  v2.2  Connected memory update to main loop (update-memory in go)(Mohammed och Hamed)
-;; 20260505  v2.3  Updated go-loop to use 'ask turtles' instead of separate breed calls.
+; 20260503  v2.3  Integrated agentA and agentBs into setup and go-loop. (Abdulmajid och Ali)
+; 20260503  v2.4  Added bot global values for posts, viral thresholds and sharing. (Abdulmajid och Ali)
+; 20260505  v2.5  Updated go-loop to use 'ask turtles' instead of separate breed calls.
 ;                 This ensures all agents (humans, agentAs, agentBs, agencies) execute in random order each tick,
 ;                 as recommended by the teacher for more realistic ABM behaviour. (Mohammed & Hamed)
 ;;;jag har ändrat för att testa
@@ -253,8 +255,8 @@ end
       <choice type="string" value="Only View"></choice>
       <choice type="string" value="With Interface"></choice>
     </chooser>
-    <slider x="24" step="1" y="14" max="100" width="202" display="Number_AgentA" height="50" min="0" direction="Horizontal" default="100.0" variable="Number_AgentA"></slider>
-    <slider x="234" step="1" y="14" max="100" width="204" display="Number_AgentB" height="50" min="0" direction="Horizontal" default="100.0" variable="Number_AgentB"></slider>
+    <slider x="24" step="1" y="14" max="100" width="202" display="Number_AgentA" height="50" min="0" direction="Horizontal" default="49.0" variable="Number_AgentA"></slider>
+    <slider x="234" step="1" y="14" max="100" width="204" display="Number_AgentB" height="50" min="0" direction="Horizontal" default="21.0" variable="Number_AgentB"></slider>
     <button x="530" y="21" height="40" disableUntilTicks="false" forever="true" kind="Observer" width="63" display="go">go</button>
     <button x="446" y="71" height="40" disableUntilTicks="false" forever="false" kind="Observer" width="83" display="go one step">go</button>
     <switch x="1395" y="651" height="40" on="false" variable="show-intentions" width="161" display="show-intentions"></switch>

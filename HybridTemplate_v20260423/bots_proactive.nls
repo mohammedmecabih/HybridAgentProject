@@ -3,41 +3,44 @@
 ;*** BOTS_PROACTIVE.NLS                                                                                                                              ****
 
 ;*********************************************************************************************************************************************************
+;***************************************************************
+; LOGBOOK OF UPDATES IN THIS FILE
+; –Date— |––Description———————————–
+; 20260427  v2.0  Created the proactive main bot agentA and added setup logic with FSM start state BotCreatePost. (Ali)
+; 20260429  v2.1  Added post creation logic with topic, extremity, post-id, labels and placement in the feed-zone. (Abdulmajid)
+; 20260502  v2.2  Implemented the proactive FSM states BotCreatePost and EvaluateBotPost for creating, broadcasting and evaluating active posts. (Abdulmajid och Ali)
+; 20260502  v2.3  Added reactive command flags createPostFlag, broadcastPostFlag and generateSimilarPostFlag to connect the proactive and reactive layers. (Abdulmajid och Ali)
+; 20260506  v2.4  Added broadcasting from agentA to agentBs using inform messages when a new post is created. (Abdulmajid)
+; 20260506  v2.5  Added post status monitoring with viral detection based on shares and likes, including movement to viral-zone. (Ali)
+; 20260509  v2.6  Added logic for generating similar posts from viral or removed posts using parent-post-id and mutated extremity. (Abdulmajid och Ali)
+; 20260509  v2.7  Added post label updates showing post-id, shares, likes, viral status and removed status. (Ali)
+; 20260511  v2.8  Added social communication with humans using request messages for promoting extreme posts. (Abdulmajid)
+; 20260510  v2.9  Added handling of agree/refuse replies from humans and counters for accepted and rejected promote requests. (Abdulmajid)
+; 20260518  v3.0  Added contract-net style request logic where agentA sends viral-contract requests to reactive bots. (Abdulmajid)
+; 20260520  v3.1  Added contract response tracking with contractAgreeCount, contractRefuseCount and contractRequestSent?. (Ali)
+; 20260522  v3.2  Improved updateEnvironmentInfo_agentAs so agentA observes active posts, viral posts and removed posts every tick. (Abdulmajid och Ali)
+; 20260527  v3.3  Added protection against removed active posts getting stuck before broadcast by redirecting them to BotGenerateSimilarPost. (Abdulmajid)
+; 20260528  v3.4  Improved fallback logic in do-generate-similar-post so a normal post is created if no previous post exists. (Ali)
+; 20260528  v3.5  Refined the hybrid architecture separation so the proactive FSM selects actions and the reactive layer executes one concrete action per tick. (Ali)
+;***************************************************************
 
 ; BESKRIVNING AV FILEN
 
-;
-
 ; Den här filen beskriver den proaktiva huvudbotten, agentA.
-
 ; Den proaktiva botten är ansvarig för att skapa inlägg, sprida dem till reaktiva bottar,
-
 ; skicka request-meddelanden till humans, övervaka om inlägg blir virala eller borttagna,
-
 ; och skapa liknande inlägg efter viralitet eller borttagning.
-
 ;
-
 ; Agenten är en hybrid agent:
-
 ; - Den proaktiva delen använder FSM-state, till exempel BotCreatePost, EvaluateBotPost,
-
 ;   BotMonitorRemoval och BotGenerateSimilarPost.
-
 ; - Den reaktiva delen utför konkreta handlingar via flaggor, till exempel createPostFlag,
-
 ;   broadcastPostFlag och generateSimilarPostFlag.
-
 ;
-
 ; Agenten kommunicerar också socialt:
-
 ; - inform till agentBs när ett nytt inlägg finns
-
 ; - request till humans för att promota ett inlägg
-
-; - tar emot agree/refuse från humans
-
+; - tar emot agree/refuse från human
 ;*********************************************************************************************************************************************************
 
 breed [posts post]
@@ -256,7 +259,7 @@ end
 ; Om det inte finns någon tidigare post sätts createPostFlag istället.
 to do-generate-similar-post
   if previousPostForSimilarity = nobody [
-    set createPostFlag true
+    create-post-from-values one-of ["election" "immigration" "taxes" "security" "trust"] random-post-extremity -1
     stop
   ]
 
@@ -343,7 +346,13 @@ end
 to broadcast-post-to-reactive-bots
   if activePost = nobody [ stop ]
   if not any? agentBs [ stop ]
-  if [post-removed?] of activePost [ stop ]
+  
+  if [post-removed?] of activePost [
+  set previousPostForSimilarity activePost
+  finish-active-post
+  set proState "BotGenerateSimilarPost"
+  stop
+]
 
   let msg create-message "inform"
   set msg add-content (list "new-post" [post-id] of activePost) msg
@@ -421,6 +430,22 @@ to EvaluateBotPost
   set previousProState proState
 
   update-post-status
+  
+  ;; om aktiv post redan är borttagen, gå direkt till similar-post
+
+  if activePost != nobody and [post-removed?] of activePost [
+
+    set previousPostForSimilarity activePost
+
+    finish-active-post
+
+    set proState "BotGenerateSimilarPost"
+
+    set waitTicks 0
+
+    stop
+
+  ]
 
   if activePost != nobody and not activePostBroadcasted? [
     set selectedAction "broadcast-post"
