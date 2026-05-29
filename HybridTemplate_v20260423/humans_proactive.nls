@@ -17,13 +17,6 @@
 ; 20260521  v2.8  Improved proactive FSM with memory and communication (Hamed)
 ;***************************************************************
 
-;***************************************************************
-;  Definiera alla egenskaper, tillstånd och minneskomponenter
-;        som används av Human‑agenten i modellen.
-;        Variablerna är grupperade efter funktion: beliefs, kommunikation,
-;        miljö, reaktiva flaggor, minne och proaktiva mål.
-;***************************************************************
-
 humans-own [
 
   ;Beliefs
@@ -99,15 +92,7 @@ humans-own [
   planQueue
 ]
 
-; PROCEDURE: setup-humans
-;***************************************************************
-; 
-;   Skapar och initierar Human‑agenter med alla nödvändiga variabler
-;   för beliefs, kommunikation, miljö, reaktiva flaggor, minne och
-;   proaktiva mål. Denna procedur används vid start av modellen och
-;   vid varje testsetup för att säkerställa att agenten börjar i ett
-;   neutralt och reproducerbart tillstånd.
-;
+
 to setup-humans
   create-humans Number_AgentA [
     set shape "person"
@@ -117,7 +102,7 @@ to setup-humans
 
     set vision 15
 
-    ;beliefs-  agentens uppfattningar om inlägg och källor
+    ;beliefs
     set postDetected false
     set postInteresting false
     set postVeryInteresting false
@@ -143,7 +128,7 @@ to setup-humans
     set reportFlag false
     set replyFlag false
     
-    ;för kommunikation– interaktion med bots och agencies
+    ;för kommunikation 
     set incoming-queue []
     set receivedBotsRequest? false 
     set lastBotsSender nobody
@@ -152,10 +137,10 @@ to setup-humans
     set agencyConfirmed? false
     set sentAgencyInform? false
 
-    ; shared– gemensamma tillstånd mellan proaktiv och reaktiv logik
+    ; shared
     set selectedAction "none"
 
-    ;proactive– mål, intentioner och planeringsstatus
+    ;proactive
     set currentGoal "None"
     set currentIntention "None"
     set proState "Scrolling"
@@ -169,7 +154,6 @@ to setup-humans
     set postRelevance 0
     
     ;Hamed skriv detta
-    ; lagring av tidigare handlingar och posttyper
     set likedMemory 0
     set sharedMemory 0
     set ignoredMemory 0
@@ -189,20 +173,11 @@ to setup-humans
   ]
 end
 
-;***************************************************************
-; PROCEDURE: updateEnvironmentInfo_humans
-;***************************************************************
-; 
-;   Uppdaterar Human‑agentens miljöinformation och reaktiva tillstånd
-;   baserat på synfältet (vision) och inlägg i närheten.
-;   Proceduren används varje tick för att simulera hur agenten
-;   upptäcker, bedömer och reagerar på nya inlägg i sin omgivning.
-;
+
 to updateEnvironmentInfo_humans
-  ;; Hantera inkommande meddelanden (kommunikation med andra agenter)
+  
   process-human-messages
   
-  ;; Uppdatera agentens lokala position
   set localxy patch-here
   
   
@@ -214,7 +189,7 @@ to updateEnvironmentInfo_humans
   set suspiciousFlag false
   set commentFlag false
   set currentPost nobody
- ;; Identifiera nya inlägg inom synfältet som inte setts tidigare
+  ; TEMPORARY RANDOM LOGIC
   
   let unseenPosts posts in-radius vision with [not member? post-id [seenPostIds] of myself]
   if any? unseenPosts [
@@ -222,26 +197,16 @@ to updateEnvironmentInfo_humans
     set seenPostIds lput [post-id] of currentPost seenPostIds
     set postDetected true
     set currentPostType [post-topic] of currentPost
-    
-    ;; Bedöm inläggets extremitet och sätt reaktiva flaggor
   if [post-extremity] of currentPost >= 8 [
 
   if random 100 < 80 [ set suspiciousFlag true ]
 
 ]
 
-if ([post-extremity] of currentPost >= 5 and [post-extremity] of currentPost < 8) [
-
-  if random 100 < 70 [ set veryInterestingFlag true ]
-
+if ([post-extremity] of currentPost >= 3 and [post-extremity] of currentPost <= 6) [
+  if random 100 < 50 [ set interestingFlag true ]
+  if random 100 < 50 [ set veryInterestingFlag true ]
 ]
-
-if [post-extremity] of currentPost < 5 [
-
-  if random 100 < 70 [ set interestingFlag true ]
-
-]
-     ;; Slumpmässig chans att kommentera inlägget
     if random 100 < 10 [
       set commentFlag true
     ]
@@ -249,77 +214,96 @@ if [post-extremity] of currentPost < 5 [
   
       
 end
-;***************************************************************
-; PROCEDURE: process-human-messages
-;***************************************************************
-; 
-;   Hanterar inkommande meddelanden till Human‑agenten från andra
-;   aktörer (Bots och Agency). Proceduren läser meddelanden från
-;   agentens inkommande kö, tolkar deras innehåll och uppdaterar
-;   relevanta variabler för kommunikationstillstånd.
-;
 
+;för ta emot meddelande från bots och bekräftelse från agency
 to process-human-messages
-  ;; Loopa igenom alla meddelanden i kön tills den är tom
   while [not empty? incoming-queue] [
     let msg get-message
+
+    if msg = "no_message" [
+      stop
+    ]
+
     let sender get-sender msg
     let performative get-performative msg
     let msgContent get-content msg
-    ;bots ber human att promota ett inlägg
-    if performative = "request" [
-      if item 0 msgContent = "promote-post" [
-        set receivedBotsRequest? true
-        set lastBotsSender sender
-        set requestedPostId item 1 msgContent
-        set requestedPostTopic item 2 msgContent
+
+    ;; Bots ber human att promota ett inlägg.
+    if performative = "request" and is-list? msgContent [
+      if not empty? msgContent [
+        if item 0 msgContent = "promote-post" [
+          set receivedBotsRequest? true
+          set lastBotsSender sender
+          set requestedPostId item 1 msgContent
+          set requestedPostTopic item 2 msgContent
+        ]
       ]
     ]
-    
-   ;; Agency bekräftar mottagen rapport
-     
-    if performative = "confirm" [
-      if item 0 msgContent = "report-received" [
-   
-         set agencyConfirmed? true
+
+    ;; Agency bekräftar att request/inform har tagits emot.
+    if performative = "confirm" and is-list? msgContent [
+      if not empty? msgContent [
+
+        if item 0 msgContent = "request-received" [
+          set agencyConfirmed? true
+          print (word "HUMAN " who
+            " | GOT CONFIRM from agency " sender
+            ": request received.")
+        ]
+
+        if item 0 msgContent = "inform-received" [
+          print (word "HUMAN " who
+            " | GOT CONFIRM from agency " sender
+            ": inform received.")
+        ]
+
+        ;; gammalt stöd om agency fortfarande skickar report-received någonstans
+        if item 0 msgContent = "report-received" [
+          set agencyConfirmed? true
+          print (word "HUMAN " who
+            " | GOT CONFIRM from agency " sender
+            ": report received.")
+        ]
+      ]
+    ]
+
+    ;; Agency skickar resultat efter utredning.
+    if performative = "inform" and is-list? msgContent [
+      if not empty? msgContent [
+
+        if item 0 msgContent = "investigation-complete" [
+          print (word "HUMAN " who
+            " | GOT INVESTIGATION RESULT from agency " sender
+            ": " msgContent)
+        ]
+
+        if item 0 msgContent = "post-removed" [
+          print (word "HUMAN " who
+            " | GOT AGENCY INFO: post removed. " msgContent)
+        ]
+
+        if item 0 msgContent = "post-released" [
+          print (word "HUMAN " who
+            " | GOT AGENCY INFO: post released. " msgContent)
+        ]
       ]
     ]
   ]
 end
-
-
         
- ;***************************************************************
-; PROCEDURE: proactive_humans
-;***************************************************************
-;
-;   Hanterar Human‑agentens proaktiva beteende genom att köra den
-;   aktuella tillståndsproceduren som lagras i variabeln `proState`.
-;   Detta gör att agenten kan växla mellan olika proaktiva tillstånd
-;   (t.ex. Scrolling, EvaluatePost, DecideAction) beroende på situation.
-;   
+    
+
+
 to proactive_humans
   run proState
 end
 
 
-;***************************************************************
-; PROCEDURE: Scrolling
-;***************************************************************
-; 
-;   Simulerar Human‑agentens beteende när den scrollar genom flödet
-;   och letar efter nya inlägg eller inkommande förfrågningar.
-;   Proceduren avgör om agenten ska gå vidare till att utvärdera ett
-;   inlägg baserat på om ett nytt inlägg har upptäckts eller om en
-;   bot har skickat en begäran.
-;
 to Scrolling
-   ;; Om agenten fått en begäran från en bot, börja utvärdera inlägget
   if receivedBotsRequest? [
     set proState "EvaluatePost"
     stop
   ]
-   ;; Om agenten har upptäckt ett nytt inlägg, börja utvärdera det
   if postDetected [
     set proState "EvaluatePost"
   ]

@@ -1,6 +1,28 @@
 ;*********************************************************************************************************************************************************
 ;*** BOTS_REACTIVE.NLS                                                                                                                               ****
 ;*********************************************************************************************************************************************************
+
+;***************************************************************
+; LOGBOOK OF UPDATES IN THIS FILE
+; –Date— |––Description———————————–
+; 20260426  v2.0  Created the reactive bot agentB with setup logic, start state check and basic FSM variables. (Abdulmajid)
+; 20260428  v2.1  Added incoming message handling so agentB can receive inform messages about new posts from agentA. (Abdulmajid)
+; 20260502  v2.2  Implemented the reactive FSM states check, decide, share and ignore. (Ali)
+; 20260504  v2.3  Added logic for finding the received post by post-id and storing it as currentPost. (Ali)
+; 20260506  v2.4  Added decision logic using share-probability, cautious-share-probability and riskTolerance. (Ali)
+; 20260508  v2.5  Added cooldown logic to prevent the same bot from sharing too often. (Abdulmajid)
+; 20260508  v2.6  Added memory lists sharedPostIds and ignoredPostIds to prevent duplicate sharing and track ignored posts. (Ali)
+; 20260510  v2.7  Added do-share logic that increases post-shares, totalShares, total-posts-shared and post-frequency. (Abdulmajid)
+; 20260513  v2.8  Added support for removed posts so reactive bots ignore posts that have been removed by agency. (Ali)
+; 20260514  v2.9  Added support for banned bots using is-banned?, where banned bots stop acting and show BANNED. (Abdulmajid)
+; 20260517  v3.0  Added contract-net style request handling for viral-contract messages from the proactive bot. (Ali)
+; 20260520  v3.1  Added agree/refuse replies from agentB back to agentA after receiving a viral-contract request. (Abdulmajid)
+; 20260522  v3.2  Added contract-active?, contract-posts-left and contract-cooldown to control contracted sharing behavior. (Ali)
+; 20260524  v3.3  Added forced sharing for contracted bots while contract-posts-left is greater than zero. (Abdulmajid)
+; 20260527  v3.4  Added reduced cooldown for contracted bots and automatic contract deactivation when the contract is finished. (Abdulmajid)
+;***************************************************************
+
+
 ; BESKRIVNING AV KLASSEN
 ;
 ; agentB representerar reaktiva bottar i modellen.
@@ -35,7 +57,7 @@ agentBs-own [
   is-banned?
   post-frequency
   account-age
-  ;; Contract / joint intention variables
+;; Contract-net variables
   contract-active?
   contract-posts-left
   contract-cooldown
