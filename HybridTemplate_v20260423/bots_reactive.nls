@@ -5,8 +5,8 @@
 ;***************************************************************
 ; LOGBOOK OF UPDATES IN THIS FILE
 ; –Date— |––Description———————————–
-; 20260426  v2.0  Created the reactive bot agentB with setup logic, start state check and basic FSM variables. (Abdulmajid)
-; 20260428  v2.1  Added incoming message handling so agentB can receive inform messages about new posts from agentA. (Abdulmajid)
+; 20260426  v2.0  Created the reactive bot reactiveBot with setup logic, start state check and basic FSM variables. (Abdulmajid)
+; 20260428  v2.1  Added incoming message handling so reactiveBot can receive inform messages about new posts from proactiveBot. (Abdulmajid)
 ; 20260502  v2.2  Implemented the reactive FSM states check, decide, share and ignore. (Ali)
 ; 20260504  v2.3  Added logic for finding the received post by post-id and storing it as currentPost. (Ali)
 ; 20260506  v2.4  Added decision logic using share-probability, cautious-share-probability and riskTolerance. (Ali)
@@ -16,7 +16,7 @@
 ; 20260513  v2.8  Added support for removed posts so reactive bots ignore posts that have been removed by agency. (Ali)
 ; 20260514  v2.9  Added support for banned bots using is-banned?, where banned bots stop acting and show BANNED. (Abdulmajid)
 ; 20260517  v3.0  Added contract-net style request handling for viral-contract messages from the proactive bot. (Ali)
-; 20260520  v3.1  Added agree/refuse replies from agentB back to agentA after receiving a viral-contract request. (Abdulmajid)
+; 20260520  v3.1  Added agree/refuse replies from reactiveBot back to proactiveBot after receiving a viral-contract request. (Abdulmajid)
 ; 20260522  v3.2  Added contract-active?, contract-posts-left and contract-cooldown to control contracted sharing behavior. (Ali)
 ; 20260524  v3.3  Added forced sharing for contracted bots while contract-posts-left is greater than zero. (Abdulmajid)
 ; 20260527  v3.4  Added reduced cooldown for contracted bots and automatic contract deactivation when the contract is finished. (Abdulmajid)
@@ -25,7 +25,7 @@
 
 ; BESKRIVNING AV KLASSEN
 ;
-; agentB representerar reaktiva bottar i modellen.
+; reactiveBot representerar reaktiva bottar i modellen.
 ;
 ; Dessa bottar skapar inte egna inlägg utan tar emot meddelanden från bots_proactive
 ; om nya inlägg som har skapats. Därefter analyserar de inlägget och bestämmer om
@@ -41,7 +41,7 @@
 ; Om is-banned? = true slutar botten att agera.
 ;*********************************************************************************************************************************************************
 
-agentBs-own [
+reactiveBots-own [
   state
   homeLoc
   localxy
@@ -64,8 +64,8 @@ agentBs-own [
 ]
 
 ; Skapar alla reaktiva bottar och initialiserar deras variabler och starttillstånd.
-to setup-agentBs
-  create-agentBs Number_AgentB [
+to setup-reactiveBots
+  create-reactiveBots Number_reactiveBots [
     set shape "bug"
     set size 1.4
     set color blue
@@ -114,7 +114,7 @@ to setup-agentBs
 end
 
 ; Uppdaterar information från omgivningen varje tick.
-to updateEnvironmentInfo_agentBs
+to updateEnvironmentInfo_reactiveBots
   set localxy patch-here
 
   ; Bannade bottar får inte agera längre
@@ -131,7 +131,7 @@ to updateEnvironmentInfo_agentBs
 end
 
 ; Kör den reaktiva FSM-logiken beroende på aktuellt state.
-to reactive_agentBs
+to reactive_reactiveBots
   ; Stoppar direkt om botten är bannad
   if is-banned? [
     set color violet

@@ -14,9 +14,8 @@
 ; HUMANS REPORTERS
 
 to-report humansSharing
-  report count humans with [shareFlag = true]
+  report sum [sharedMemory] of humans
 end
-
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------
 ; POST COUNTERS
 
@@ -37,11 +36,11 @@ to-report number-of-removed-posts
 end
 
 to-report number-of-reactive-bots
-  report count agentBs
+  report count reactiveBots
 end
 
 to-report number-of-proactive-bots
-  report count agentAs
+  report count proactiveBots
 end
 
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -179,29 +178,29 @@ end
 ; BOT STATE REPORTERS
 
 to-report proactive-bot-state
-  ifelse any? agentAs
-  [ report [proState] of one-of agentAs ]
+  ifelse any? proactiveBots
+  [ report [proState] of one-of proactiveBots ]
   [ report "no proactive bot" ]
 end
 
 to-report reactive-bots-checking
-  report count agentBs with [state = "check"]
+  report count reactiveBots with [state = "check"]
 end
 
 to-report reactive-bots-deciding
-  report count agentBs with [state = "decide"]
+  report count reactiveBots with [state = "decide"]
 end
 
 to-report reactive-bots-sharing
-  report count agentBs with [state = "share"]
+  report count reactiveBots with [state = "share"]
 end
 
 to-report reactive-bots-ignoring
-  report count agentBs with [state = "ignore"]
+  report count reactiveBots with [state = "ignore"]
 end
 
 to-report banned-bots
-  report count agentBs with [is-banned?]
+  report count reactiveBots with [is-banned?]
 end
 
 ;-------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -237,5 +236,27 @@ to update-post-ranking-output
     output-print (word rank ". " short-post-summary p)
     set rank rank + 1
   ]
+end
+
+to update-dashboard-plots
+  set-current-plot "Humans sharing"
+  set-current-plot-pen "count"
+  plot humansSharing
+
+  set-current-plot "Active posts"
+  set-current-plot-pen "count"
+  plot number-of-active-posts
+
+  set-current-plot "Viral posts"
+  set-current-plot-pen "count"
+  plot number-of-viral-posts
+
+  set-current-plot "Removed posts"
+  set-current-plot-pen "count"
+  plot number-of-removed-posts
+
+  set-current-plot "Total shares"
+  set-current-plot-pen "count"
+  plot total-post-shares
 end
 

@@ -94,7 +94,7 @@ humans-own [
 
 
 to setup-humans
-  create-humans Number_AgentA [
+   create-humans Number_proactiveBots  [
     set shape "person"
     set color white
     set size 1

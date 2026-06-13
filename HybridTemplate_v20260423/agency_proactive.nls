@@ -5,7 +5,7 @@
 ;; Rules implemented here:
 ;; - Total bots can be changed from the NetLogo slider/setup.
 ;; - Agency may ban only 10% of the bots created at setup.
-;; - Original bot count is reconstructed as: count agentBs + total-banned-bots.
+;; - Original bot count is reconstructed as: count reactiveBots + total-banned-bots.
 ;; - Bots are suspicious only if they created at least one viral post with post-extremity 3-6.
 ;; - Banning happens gradually while the simulator runs.
 ;; - Uses variables only, not display color.
@@ -24,7 +24,7 @@ end
 
 to agency-monitoring
   ;; Leta efter virala posts som inte redan är borttagna.
-  ;; Viktigt: posts skapas av agentA, inte av agentB.
+  ;; Viktigt: posts skapas av proactiveBot, inte av reactiveBot.
 let viral-posts posts with [
   not post-removed? and
   post-viral? and
@@ -204,7 +204,7 @@ end
 
 to-report is-suspicious-bot? [candidate]
   if not is-agent? candidate [ report false ]
-  if [breed] of candidate != agentBs [ report false ]
+  if [breed] of candidate != reactiveBots [ report false ]
   if [hidden?] of candidate [ report false ]
   if [is-banned?] of candidate [ report false ]
 
@@ -229,7 +229,7 @@ end
 to-report original-bot-count
   ;; Reconstruct the setup count:
   ;; alive bots + bots already banned by agencies.
-  report count agentBs + total-banned-bots
+  report count reactiveBots + total-banned-bots
 end
 
 

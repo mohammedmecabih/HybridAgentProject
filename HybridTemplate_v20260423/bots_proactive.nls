@@ -6,19 +6,19 @@
 ;***************************************************************
 ; LOGBOOK OF UPDATES IN THIS FILE
 ; –Date— |––Description———————————–
-; 20260427  v2.0  Created the proactive main bot agentA and added setup logic with FSM start state BotCreatePost. (Ali)
+; 20260427  v2.0  Created the proactive main bot proactiveBot and added setup logic with FSM start state BotCreatePost. (Ali)
 ; 20260429  v2.1  Added post creation logic with topic, extremity, post-id, labels and placement in the feed-zone. (Abdulmajid)
 ; 20260502  v2.2  Implemented the proactive FSM states BotCreatePost and EvaluateBotPost for creating, broadcasting and evaluating active posts. (Abdulmajid och Ali)
 ; 20260502  v2.3  Added reactive command flags createPostFlag, broadcastPostFlag and generateSimilarPostFlag to connect the proactive and reactive layers. (Abdulmajid och Ali)
-; 20260506  v2.4  Added broadcasting from agentA to agentBs using inform messages when a new post is created. (Abdulmajid)
+; 20260506  v2.4  Added broadcasting from proactiveBot to reactiveBots using inform messages when a new post is created. (Abdulmajid)
 ; 20260506  v2.5  Added post status monitoring with viral detection based on shares and likes, including movement to viral-zone. (Ali)
 ; 20260509  v2.6  Added logic for generating similar posts from viral or removed posts using parent-post-id and mutated extremity. (Abdulmajid och Ali)
 ; 20260509  v2.7  Added post label updates showing post-id, shares, likes, viral status and removed status. (Ali)
 ; 20260511  v2.8  Added social communication with humans using request messages for promoting extreme posts. (Abdulmajid)
 ; 20260510  v2.9  Added handling of agree/refuse replies from humans and counters for accepted and rejected promote requests. (Abdulmajid)
-; 20260518  v3.0  Added contract-net style request logic where agentA sends viral-contract requests to reactive bots. (Abdulmajid)
+; 20260518  v3.0  Added contract-net style request logic where proactiveBot sends viral-contract requests to reactive bots. (Abdulmajid)
 ; 20260520  v3.1  Added contract response tracking with contractAgreeCount, contractRefuseCount and contractRequestSent?. (Ali)
-; 20260522  v3.2  Improved updateEnvironmentInfo_agentAs so agentA observes active posts, viral posts and removed posts every tick. (Abdulmajid och Ali)
+; 20260522  v3.2  Improved updateEnvironmentInfo_proactiveBots so proactiveBot observes active posts, viral posts and removed posts every tick. (Abdulmajid och Ali)
 ; 20260527  v3.3  Added protection against removed active posts getting stuck before broadcast by redirecting them to BotGenerateSimilarPost. (Abdulmajid)
 ; 20260528  v3.4  Improved fallback logic in do-generate-similar-post so a normal post is created if no previous post exists. (Ali)
 ; 20260528  v3.5  Refined the hybrid architecture separation so the proactive FSM selects actions and the reactive layer executes one concrete action per tick. (Ali)
@@ -26,7 +26,7 @@
 
 ; BESKRIVNING AV FILEN
 
-; Den här filen beskriver den proaktiva huvudbotten, agentA.
+; Den här filen beskriver den proaktiva huvudbotten, proactiveBot.
 ; Den proaktiva botten är ansvarig för att skapa inlägg, sprida dem till reaktiva bottar,
 ; skicka request-meddelanden till humans, övervaka om inlägg blir virala eller borttagna,
 ; och skapa liknande inlägg efter viralitet eller borttagning.
@@ -38,7 +38,7 @@
 ;   broadcastPostFlag och generateSimilarPostFlag.
 ;
 ; Agenten kommunicerar också socialt:
-; - inform till agentBs när ett nytt inlägg finns
+; - inform till reactiveBots när ett nytt inlägg finns
 ; - request till humans för att promota ett inlägg
 ; - tar emot agree/refuse från human
 ;*********************************************************************************************************************************************************
@@ -50,7 +50,7 @@ posts-own [
   post-viral? post-removed? post-origin parent-post-id post-age
 ]
 
-agentAs-own [
+proactiveBots-own [
   homeLoc localxy agTimer1 agAlarm1
   proState previousProState waitTicks
   selectedAction actionExecuted?
@@ -70,10 +70,10 @@ agentAs-own [
  ]
 
 ; Skapar den proaktiva huvudbotten och sätter alla startvärden.
-; Detta körs vid setup och ger agentA sitt FSM-startläge, sina kommunikationsvariabler
+; Detta körs vid setup och ger proactiveBot sitt FSM-startläge, sina kommunikationsvariabler
 ; och sina kontrollflaggor för det reaktiva lagret.
-to setup-agentAs
-  create-agentAs 1 [
+to setup-proactiveBots
+  create-proactiveBots 1 [
     set label "MAIN"
     set shape "bug"
     set size 2.5
@@ -142,7 +142,7 @@ end
 ; Uppdaterar botens uppfattning om miljön varje tick.
 ; Den läser först inkommande svar från humans och uppdaterar sedan information
 ; om senaste post, aktiv post, viralitet och borttagning.
-to updateEnvironmentInfo_agentAs
+to updateEnvironmentInfo_proactiveBots
   process-human-replies
   update-contract-cycle
   
@@ -179,26 +179,26 @@ end
 ; De bottar som accepterar måste dela de kommande 10 posts,
 ; men får halverad cooldown som belöning.
 to request-reactive-bot-contract
-  if not any? agentBs [ stop ]
+  if not any? reactiveBots [ stop ]
 
   set contractAgreeCount 0
   set contractRefuseCount 0
 
   let msg create-message "request"
   set msg add-content (list "viral-contract" 10) msg
-  broadcast-to agentBs msg who
+  broadcast-to reactiveBots msg who
 
   set contractRequestSent? true
 end
 
 
 ; Kontrollerar om nuvarande contract-runda är över.
-; När alla svar har kommit in och inga agentBs längre har aktivt contract,
-; görs agentA redo att skicka ett nytt contract nästa gång.
+; När alla svar har kommit in och inga reactiveBots längre har aktivt contract,
+; görs proactiveBot redo att skicka ett nytt contract nästa gång.
 to update-contract-cycle
   if contractRequestSent? [
-    if contractAgreeCount + contractRefuseCount >= count agentBs [
-      if not any? agentBs with [contract-active? = true] [
+    if contractAgreeCount + contractRefuseCount >= count reactiveBots [
+      if not any? reactiveBots with [contract-active? = true] [
         set contractRequestSent? false
       ]
     ]
@@ -209,7 +209,7 @@ end
 ; Det reaktiva lagret.
 ; Utför endast en konkret handling per tick baserat på prioritet:
 ; först broadcast, sedan skapa liknande post, sedan skapa ny post.
-to reactive_agentAs
+to reactive_proactiveBots
   if actionExecuted? [ stop ]
 
   if broadcastPostFlag [
@@ -345,7 +345,7 @@ end
 ; Om posten är röd/extrem skickas också en request till humans om att promota samma post.
 to broadcast-post-to-reactive-bots
   if activePost = nobody [ stop ]
-  if not any? agentBs [ stop ]
+  if not any? reactiveBots [ stop ]
   
   if [post-removed?] of activePost [
   set previousPostForSimilarity activePost
@@ -356,7 +356,7 @@ to broadcast-post-to-reactive-bots
 
   let msg create-message "inform"
   set msg add-content (list "new-post" [post-id] of activePost) msg
-  broadcast-to agentBs msg who
+  broadcast-to reactiveBots msg who
 
   ;; social communication:
   ;; ask humans to promote only red/extreme posts
@@ -390,7 +390,8 @@ end
 
 
 ; Kör den proaktiva FSM:en genom att köra proceduren vars namn finns i proState.
-to proactive_agentAs
+to proactive_proactiveBots
+  
   run proState
 end
 
@@ -622,9 +623,9 @@ to-report post-color [extremity]
 end
 
 
-; Läser inkommande svar från humans och agentBs.
+; Läser inkommande svar från humans och reactiveBots.
 ; Humans kan svara agree/refuse på promote-post.
-; agentBs kan svara agree/refuse på viral-contract.
+; reactiveBots kan svara agree/refuse på viral-contract.
 to process-human-replies
   while [not empty? incoming-queue] [
     let msg get-message
